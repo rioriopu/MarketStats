@@ -108,6 +108,21 @@ namespace MarketStats.Data
             return removed;
         }
 
+        /// <summary>指定したリテイナーについて、記録済みの最も新しい売却時刻を返す（無ければ 0）。</summary>
+        public long LatestUnixFor(string retainerName)
+        {
+            lock (_lock)
+            {
+                long latest = 0;
+                foreach (var r in _records)
+                {
+                    if (!string.Equals(r.RetainerName, retainerName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (r.UnixTime > latest) latest = r.UnixTime;
+                }
+                return latest;
+            }
+        }
+
         /// <summary>指定した購入者のレコードをすべて削除する。</summary>
         public int RemoveBuyer(string buyerName)
         {

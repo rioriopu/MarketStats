@@ -69,6 +69,140 @@ namespace MarketStats.UI
                 ImGui.Spacing();
             }
 
+            // ---- 取りこぼし対策 ----
+            if (ImGui.CollapsingHeader("取りこぼし対策", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.Indent(10);
+                ImGui.TextWrapped(
+                    "ゲーム内の売却履歴はリテイナーごと 20 件しか残りません。" +
+                    "こまめに履歴を開くほど取りこぼしが減ります。");
+                ImGui.Spacing();
+
+                var withAr = config.AutoOpenHistoryWithAutoRetainer;
+                if (ImGui.Checkbox("AutoRetainer の巡回中に売却履歴を自動取得する", ref withAr))
+                {
+                    config.AutoOpenHistoryWithAutoRetainer = withAr;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "AutoRetainer が各リテイナーの用事を終えたタイミングで、売却履歴を開いて取り込み、すぐ閉じます。\n" +
+                    "AutoRetainer を導入していない場合は何も起きません。");
+
+                var onMenu = config.AutoOpenHistoryOnRetainerMenu;
+                if (ImGui.Checkbox("リテイナーのメニューを開いたときに自動取得する", ref onMenu))
+                {
+                    config.AutoOpenHistoryOnRetainerMenu = onMenu;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "自分でリテイナーに話しかけたときに、売却履歴を自動で開いて取り込みます。\n" +
+                    "AutoRetainer を使っている場合は上の項目だけを有効にしてください（操作が競合することがあります）。");
+
+                var diff = config.EnableSellListDiff;
+                if (ImGui.Checkbox("出品リストの差分から売却を検出する", ref diff))
+                {
+                    config.EnableSellListDiff = diff;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "出品リストを開くたびに内容を記録し、消えた出品を「売れた可能性のある取引」として残します。\n" +
+                    "購入者名は分かりませんが、履歴が溢れた分の売上も把握できます。");
+
+                var warn = config.WarnHistoryGap;
+                if (ImGui.Checkbox("取りこぼしの可能性を警告する", ref warn))
+                {
+                    config.WarnHistoryGap = warn;
+                    config.Save();
+                }
+
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted,
+                    $"自動取得: {Plugin.AutoOpen.AutoOpenCount} 回 / 最終結果: {Plugin.AutoOpen.LastResult}");
+                ImGui.TextColored(ColorMuted,
+                    $"差分検出: {Plugin.SellListWatcher.DetectedCount} 件 / 未確定 {Plugin.Pending.UnconfirmedCount} 件");
+
+                ImGui.Unindent(10);
+                ImGui.Spacing();
+            }
+
+            // ---- 再出品の追跡 ----
+            if (ImGui.CollapsingHeader("再出品の追跡", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.Indent(10);
+                ImGui.TextWrapped(
+                    "マーケットの出品情報には出品者のキャラクター名が含まれないため、" +
+                    "「買った直後に同じ物を出品し始めた出品者」を状況証拠から推定します。確定情報ではありません。");
+                ImGui.Spacing();
+
+                var resale = config.EnableResaleTracking;
+                if (ImGui.Checkbox("マーケットボードで見た出品を記録する", ref resale))
+                {
+                    config.EnableResaleTracking = resale;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "自分でマーケットボードを開いたときのデータだけを記録します。" +
+                    "プラグインから検索を自動で投げることはありません。");
+
+                var identity = config.EnableIdentityCollection;
+                if (ImGui.Checkbox("出品者の名前を解決するための対応表を集める", ref identity))
+                {
+                    config.EnableIdentityCollection = identity;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "周囲に見えたプレイヤーや、フレンド / FC / リンクシェルのメンバーから\n" +
+                    "識別子とキャラクター名の対応を集めます。ローカルに保存するだけで外部送信はしません。");
+
+                var window = config.ResaleWindowHours;
+                ImGui.SetNextItemWidth(240);
+                if (ImGui.SliderInt("購入から何時間以内の出品を候補にするか", ref window, 1, 168))
+                {
+                    config.ResaleWindowHours = window;
+                    config.Save();
+                    _resaleCacheBuyer = null;
+                }
+
+                var listingDays = config.ListingRetentionDays;
+                ImGui.SetNextItemWidth(240);
+                if (ImGui.SliderInt("出品記録の保持日数", ref listingDays, 1, 60))
+                {
+                    config.ListingRetentionDays = listingDays;
+                    config.Save();
+                }
+
+                var autoTrack = config.UniversalisAutoTrack;
+                if (ImGui.Checkbox("Universalis から出品を定期取得する", ref autoTrack))
+                {
+                    config.UniversalisAutoTrack = autoTrack;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "最近購入されたアイテムの出品状況を、一定間隔で 1 件ずつ取得して追跡材料にします。\n" +
+                    "「Universalis 連携」を有効にしている場合のみ動作します。");
+
+                if (config.UniversalisAutoTrack)
+                {
+                    var interval = config.UniversalisTrackIntervalMinutes;
+                    ImGui.SetNextItemWidth(240);
+                    if (ImGui.SliderInt("取得間隔（分）", ref interval, 5, 120))
+                    {
+                        config.UniversalisTrackIntervalMinutes = interval;
+                        config.Save();
+                    }
+
+                    if (!config.EnableUniversalis)
+                        ImGui.TextColored(ColorAccent, "※「Universalis 連携」が無効のため動作しません。");
+                }
+
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted,
+                    $"出品記録: {Plugin.Listings.Count:N0} 件 / 対応表: {Plugin.Identities.ConfirmedCount:N0} 人（推定含め {Plugin.Identities.Count:N0} 件）");
+
+                ImGui.Unindent(10);
+                ImGui.Spacing();
+            }
+
             // ---- 保持期間 ----
             if (ImGui.CollapsingHeader("ログの保持期間", ImGuiTreeNodeFlags.DefaultOpen))
             {
@@ -216,6 +350,30 @@ namespace MarketStats.UI
                 ImGui.SameLine();
                 if (ImGui.Button("保存フォルダを開く"))
                     LodestoneLink.OpenUrl(Plugin.PluginInterface.GetPluginConfigDirectory());
+
+                ImGui.Spacing();
+                if (ImGui.Button("出品記録を消去"))
+                {
+                    Plugin.Listings.Clear();
+                    _resaleCacheBuyer = null;
+                    Plugin.ChatGui.Print("[Market Stats] 出品記録を消去しました。");
+                }
+                AttachTooltip("マーケットで観測した出品の記録（再出品の追跡に使うもの）を消します。");
+
+                ImGui.SameLine();
+                if (ImGui.Button("対応表を消去"))
+                {
+                    Plugin.Identities.Clear();
+                    Plugin.ChatGui.Print("[Market Stats] 出品者の対応表を消去しました。");
+                }
+                AttachTooltip("識別子とキャラクター名の対応表を消します。");
+
+                ImGui.SameLine();
+                if (ImGui.Button("未確定売却を消去"))
+                {
+                    Plugin.Pending.Clear();
+                    Plugin.ChatGui.Print("[Market Stats] 未確定売却と取りこぼし警告を消去しました。");
+                }
 
                 ImGui.Spacing();
                 ImGui.Checkbox("すべてのログを削除する（チェックしてから実行）", ref _confirmClear);

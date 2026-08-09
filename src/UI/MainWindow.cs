@@ -20,6 +20,7 @@ namespace MarketStats.UI
         {
             Buyers,
             History,
+            Sellers,
             Market,
             Settings,
             Donation,
@@ -60,7 +61,11 @@ namespace MarketStats.UI
         }
 
         /// <summary>売却ログが変化したときに呼ぶ。次の描画で集計を作り直す。</summary>
-        public void InvalidateCache() => _statsDirty = true;
+        public void InvalidateCache()
+        {
+            _statsDirty = true;
+            _resaleCacheBuyer = null;
+        }
 
         /// <summary>外部（コマンド等）から開くタブを指定する。</summary>
         public void RequestTab(Tab tab) => _requestedTab = tab;
@@ -74,6 +79,7 @@ namespace MarketStats.UI
 
             DrawTab("購入者別", Tab.Buyers, DrawBuyersTab);
             DrawTab("取引履歴", Tab.History, DrawHistoryTab);
+            DrawTab("出品者", Tab.Sellers, DrawSellersTab);
             DrawTab("相場", Tab.Market, DrawMarketTab);
             DrawTab("設定", Tab.Settings, DrawSettingsTab);
             DrawTab("ご支援", Tab.Donation, DrawDonationTab);

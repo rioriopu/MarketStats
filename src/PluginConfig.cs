@@ -58,6 +58,40 @@ namespace MarketStats
         /// <summary>Universalis の照会範囲。空ならログイン中キャラのデータセンター。</summary>
         public string UniversalisScope { get; set; } = string.Empty;
 
+        // ---- 取りこぼし対策 ----
+
+        /// <summary>AutoRetainer の巡回に合わせて、各リテイナーの売却履歴を自動で開いて取り込む。</summary>
+        public bool AutoOpenHistoryWithAutoRetainer { get; set; } = false;
+
+        /// <summary>リテイナーのメニューを開いたときに、売却履歴を自動で開いて取り込む。</summary>
+        public bool AutoOpenHistoryOnRetainerMenu { get; set; } = false;
+
+        /// <summary>出品リストの差分から「売れたらしい取引」を検出する。</summary>
+        public bool EnableSellListDiff { get; set; } = true;
+
+        /// <summary>履歴が 20 件で溢れて取りこぼした可能性がある場合に警告を残す。</summary>
+        public bool WarnHistoryGap { get; set; } = true;
+
+        // ---- 再出品の追跡 ----
+
+        /// <summary>マーケットボードで見た出品を記録し、再出品の候補を推定する。</summary>
+        public bool EnableResaleTracking { get; set; } = true;
+
+        /// <summary>周囲のプレイヤーやメンバーリストから ContentId ↔ 名前の対応を集める。</summary>
+        public bool EnableIdentityCollection { get; set; } = true;
+
+        /// <summary>購入から何時間以内の出品を「再出品の候補」とみなすか。</summary>
+        public int ResaleWindowHours { get; set; } = 24;
+
+        /// <summary>観測した出品の保持日数。</summary>
+        public int ListingRetentionDays { get; set; } = 14;
+
+        /// <summary>Universalis から、最近購入されたアイテムの出品を定期的に取得して追跡に使う。</summary>
+        public bool UniversalisAutoTrack { get; set; } = false;
+
+        /// <summary>Universalis の自動取得の間隔（分）。</summary>
+        public int UniversalisTrackIntervalMinutes { get; set; } = 15;
+
         // ---- UI ----
 
         /// <summary>起動時にウィンドウを開くか。</summary>

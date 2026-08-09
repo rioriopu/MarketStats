@@ -10,11 +10,14 @@ namespace MarketStats.Game
     {
         public string WorldName { get; set; } = string.Empty;
         public string RetainerName { get; set; } = string.Empty;
+        public ulong ListingId { get; set; }
+        public ulong RetainerId { get; set; }
         public long PricePerUnit { get; set; }
         public long Quantity { get; set; }
         public long Total { get; set; }
         public bool Hq { get; set; }
         public bool OnMannequin { get; set; }
+        public long LastReviewUnix { get; set; }
         public DateTime LastReviewLocal { get; set; }
     }
 
@@ -137,17 +140,20 @@ namespace MarketStats.Game
 
             foreach (var l in listings)
             {
+                var lastReview = (long?)l["lastReviewTime"] ?? 0;
                 snapshot.Listings.Add(new MarketListing
                 {
                     WorldName = (string?)l["worldName"] ?? snapshot.Scope,
                     RetainerName = (string?)l["retainerName"] ?? string.Empty,
+                    ListingId = ParseId((string?)l["listingID"]),
+                    RetainerId = ParseId((string?)l["retainerID"]),
                     PricePerUnit = (long?)l["pricePerUnit"] ?? 0,
                     Quantity = (long?)l["quantity"] ?? 0,
                     Total = (long?)l["total"] ?? 0,
                     Hq = (bool?)l["hq"] ?? false,
                     OnMannequin = (bool?)l["onMannequin"] ?? false,
-                    LastReviewLocal = DateTimeOffset
-                        .FromUnixTimeSeconds((long?)l["lastReviewTime"] ?? 0).LocalDateTime,
+                    LastReviewUnix = lastReview,
+                    LastReviewLocal = DateTimeOffset.FromUnixTimeSeconds(lastReview).LocalDateTime,
                 });
             }
 
@@ -175,6 +181,44 @@ namespace MarketStats.Game
             }
 
             snapshot.History.Sort((a, b) => b.UnixTime.CompareTo(a.UnixTime));
+        }
+
+        /// <summary>
+        /// Universalis の listingID / retainerID は 64bit 整数を文字列で表したもの。
+        /// 解釈できない場合は 0（＝不明）とする。
+        /// </summary>
+        private static ulong ParseId(string? value) =>
+            ulong.TryParse(value, out var id) ? id : 0UL;
+
+        /// <summary>取得した出品を、再出品追跡用のレコードへ変換する。</summary>
+        public static List<Data.ListingRecord> ToListingRecords(MarketSnapshot snapshot)
+        {
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var result = new List<Data.ListingRecord>(snapshot.Listings.Count);
+
+            foreach (var l in snapshot.Listings)
+            {
+                if (l.ListingId == 0) continue;
+
+                result.Add(new Data.ListingRecord
+                {
+                    ItemId = snapshot.ItemId,
+                    Hq = l.Hq,
+                    ListingId = l.ListingId,
+                    RetainerId = l.RetainerId,
+                    OwnerContentId = 0,
+                    RetainerName = l.RetainerName,
+                    UnitPrice = l.PricePerUnit,
+                    Quantity = l.Quantity,
+                    WorldName = l.WorldName,
+                    ListedUnix = l.LastReviewUnix,
+                    FirstSeenUnix = now,
+                    LastSeenUnix = now,
+                    Source = "universalis",
+                });
+            }
+
+            return result;
         }
 
         /// <summary>指定した購入者名に一致する履歴だけを抜き出す。</summary>

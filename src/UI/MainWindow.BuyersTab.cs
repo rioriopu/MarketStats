@@ -18,6 +18,10 @@ namespace MarketStats.UI
 
         private int _sortIndex;
 
+        // 再出品候補は計算コストがあるため、選択中の購入者ごとにキャッシュする。
+        private string? _resaleCacheBuyer;
+        private List<ResaleCandidate> _resaleCandidates = new();
+
         private void DrawBuyersTab()
         {
             ImGui.Spacing();
@@ -210,6 +214,107 @@ namespace MarketStats.UI
 
             foreach (var item in buyer.Items)
                 DrawBuyerItem(buyer, item);
+
+            DrawResaleSection(buyer);
+        }
+
+        /// <summary>「買った物を再出品しているのでは」という推定候補を表示する。</summary>
+        private void DrawResaleSection(BuyerStat buyer)
+        {
+            if (!Plugin.Config.EnableResaleTracking || buyer.IsMannequin) return;
+
+            if (_resaleCacheBuyer != buyer.BuyerName)
+            {
+                _resaleCacheBuyer = buyer.BuyerName;
+                _resaleCandidates = ResaleAnalyzer.Analyze(
+                    buyer.Items, Plugin.Listings, Plugin.Identities, Plugin.Config.ResaleWindowHours);
+
+                // 十分な確度で複数回一致した候補は、識別子と名前の対応として覚えておく。
+                foreach (var candidate in _resaleCandidates)
+                {
+                    if (candidate.OwnerContentId == 0) continue;
+                    if (candidate.Score < ResaleAnalyzer.InferenceScore) continue;
+                    if (candidate.MatchedPurchases < 2) continue;
+                    Plugin.Identities.RecordInference(candidate.OwnerContentId, buyer.BuyerName, candidate.Score);
+                }
+            }
+
+            ImGui.Spacing();
+
+            var header = _resaleCandidates.Count > 0
+                ? $"再出品の候補 ({_resaleCandidates.Count} 件)###resale"
+                : "再出品の候補###resale";
+
+            if (!ImGui.CollapsingHeader(header)) return;
+
+            ImGui.Indent(12);
+            ImGui.TextWrapped(
+                "マーケットの出品情報から出品者本人を特定する手段は公開されていないため、" +
+                "ここに出るのは「買った直後に同じ物を出品し始めた出品者」という状況証拠にもとづく推定です。");
+
+            if (_resaleCandidates.Count == 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted,
+                    "候補はありません。ゲーム内でそのアイテムのマーケットボードを開くか、" +
+                    "設定で Universalis の自動取得を有効にすると材料が集まります。");
+                ImGui.Unindent(12);
+                return;
+            }
+
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (ImGui.BeginTable("##resale_table", 6, flags))
+            {
+                ImGui.TableSetupColumn("確信度", ImGuiTableColumnFlags.WidthFixed, 60);
+                ImGui.TableSetupColumn("出品者", ImGuiTableColumnFlags.WidthStretch, 1.2f);
+                ImGui.TableSetupColumn("アイテム", ImGuiTableColumnFlags.WidthStretch, 1.4f);
+                ImGui.TableSetupColumn("出品時刻", ImGuiTableColumnFlags.WidthFixed, 120);
+                ImGui.TableSetupColumn("単価", ImGuiTableColumnFlags.WidthFixed, 90);
+                ImGui.TableSetupColumn("根拠", ImGuiTableColumnFlags.WidthFixed, 60);
+                ImGui.TableHeadersRow();
+
+                foreach (var candidate in _resaleCandidates)
+                {
+                    ImGui.TableNextRow();
+
+                    ImGui.TableNextColumn();
+                    var color = candidate.Score >= 140 ? ColorFavorite
+                        : candidate.Score >= 90 ? ColorAccent
+                        : ColorMuted;
+                    ImGui.TextColored(color, candidate.ConfidenceText);
+                    AttachTooltip($"スコア {candidate.Score}");
+
+                    ImGui.TableNextColumn();
+                    var label = candidate.OwnerName
+                                ?? (candidate.OwnerContentId != 0
+                                    ? $"不明 (ID:{candidate.OwnerContentId & 0xFFFFFF:X6})"
+                                    : $"リテイナー {candidate.RetainerName}");
+                    ImGui.Text(label);
+                    if (!string.IsNullOrEmpty(candidate.RetainerName))
+                        AttachTooltip($"出品リテイナー: {candidate.RetainerName}");
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text(candidate.ItemName + (candidate.Hq ? " (HQ)" : string.Empty));
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text(candidate.ListedLocal.ToString("M/d HH:mm"));
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text($"{candidate.UnitPrice:N0}");
+
+                    ImGui.TableNextColumn();
+                    ImGui.TextColored(ColorMuted, $"{candidate.Reasons.Count} 件");
+                    AttachTooltip(string.Join("\n", candidate.Reasons.Select(r => "・" + r)));
+                }
+
+                ImGui.EndTable();
+            }
+
+            ImGui.Unindent(12);
         }
 
         private void DrawBuyerItem(BuyerStat buyer, BuyerItemStat item)
