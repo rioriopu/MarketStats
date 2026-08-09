@@ -1,0 +1,22 @@
+{
+  "Name": "Market Stats",
+  "InternalName": "MarketStats",
+  "AssemblyVersion": "0.1.0.0",
+  "Author": "estell",
+  "Punchline": "リテイナーの販売履歴を購入者ごとに集計 — 誰が・何を・いつ・いくつ買ったかが一目でわかる。",
+  "Description": "リテイナーの売却履歴（ゲーム内で最大20件しか残らない）を自動で取り込み、購入者ごと・アイテムごとに累計購入数と購入回数を集計します。\n\n- 購入者別の累計購入数 / 購入回数 / 累計金額 / 最終購入日時\n- 同一購入者による同一アイテムのまとめ表示（例: 99個 × 10枠 = 990個）\n- 取引履歴の一覧（日時 / 購入者 / アイテム / 数量 / 単価 / 合計 / リテイナー）\n- 購入者名クリックで Lodestone のキャラクター検索を開く\n- ログ保持期間を選択（1日 / 3日 / 5日 / 1週間 / 無期限）\n- お気に入り登録した購入者は長期保持（2週間 / 1ヶ月 / 3ヶ月）\n- Universalis 連携（任意）でそのアイテムの現在の出品状況を確認\n\n「特定の商品を大量購入している人」「リピーター」を素早く把握できます。",
+  "RepoUrl": "https://github.com/rioriopu/MarketStats",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "market",
+    "retainer",
+    "sales",
+    "statistics"
+  ],
+  "CategoryTags": [
+    "UI"
+  ],
+  "ImageUrls": [],
+  "IconUrl": "",
+  "DalamudApiLevel": 15
+}
