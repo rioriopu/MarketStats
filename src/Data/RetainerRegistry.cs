@@ -26,6 +26,9 @@ namespace MarketStats.Data
         /// <summary>自分のリテイナーか。</summary>
         public bool IsMine { get; set; }
 
+        /// <summary>持ち主を手動で設定したか。</summary>
+        public bool ManuallySet { get; set; }
+
         public long FirstSeenUnix { get; set; }
         public long LastSeenUnix { get; set; }
 
@@ -163,6 +166,53 @@ namespace MarketStats.Data
                 profile.GuessedOwnerName = ownerName;
                 profile.GuessScore = score;
                 profile.GuessReasons = reasons.ToList();
+                _dirty = true;
+            }
+        }
+
+        /// <summary>
+        /// 条件を満たさなくなった推定を取り下げる。
+        /// 誤った名前を出し続けるより「不明」に戻す方が実害が小さい。
+        /// </summary>
+        public void ClearGuess(ulong retainerId, string reason)
+        {
+            lock (_lock)
+            {
+                if (!_byId.TryGetValue(retainerId, out var profile)) return;
+                if (profile.HasOwner) return;
+                if (string.IsNullOrEmpty(profile.GuessedOwnerName)) return;
+
+                profile.GuessedOwnerName = null;
+                profile.GuessScore = 0;
+                profile.GuessReasons = new List<string> { $"推定を取り下げました（{reason}）" };
+                _dirty = true;
+            }
+        }
+
+        /// <summary>
+        /// 持ち主を手動で確定させる。何らかの方法で分かった相手を、以後の推定より優先して扱う。
+        /// </summary>
+        public void SetOwnerManually(ulong retainerId, string ownerName)
+        {
+            lock (_lock)
+            {
+                if (!_byId.TryGetValue(retainerId, out var profile)) return;
+
+                if (string.IsNullOrWhiteSpace(ownerName))
+                {
+                    // 空文字で呼ばれたら手動設定を解除する。
+                    if (!profile.IsMine) profile.OwnerName = null;
+                    profile.ManuallySet = false;
+                }
+                else
+                {
+                    profile.OwnerName = ownerName.Trim();
+                    profile.ManuallySet = true;
+                    profile.GuessedOwnerName = null;
+                    profile.GuessScore = 0;
+                    profile.GuessReasons = new List<string> { "手動で設定されました" };
+                }
+
                 _dirty = true;
             }
         }

@@ -48,6 +48,8 @@ namespace MarketStats.UI
                 $"出品者名の項目: {(PacketListingProbe.HasPlayerNameProperty ? "あり" : "なし")}");
 
             ImGui.Spacing();
+            DrawSelfSection();
+            ImGui.Spacing();
 
             if (_probeGameListings.Count == 0 && _probePacketListings.Count == 0)
                 return;
@@ -59,6 +61,107 @@ namespace MarketStats.UI
             if (ImGui.CollapsingHeader($"パケットから読めた値 ({_probePacketListings.Count} 件)###probe_packet",
                     ImGuiTreeNodeFlags.DefaultOpen))
                 DrawProbePacketTable();
+        }
+
+        /// <summary>
+        /// 自分のキャラクターとリテイナーの識別子を並べる。
+        /// 答えが分かっている自分のデータを使って、マーケットのデータを検証するための材料。
+        /// </summary>
+        private void DrawSelfSection()
+        {
+            if (!ImGui.CollapsingHeader("自分の識別子で答え合わせ###probe_self",
+                    ImGuiTreeNodeFlags.DefaultOpen))
+                return;
+
+            var self = SelfRetainerProbe.Read();
+
+            if (!string.IsNullOrEmpty(self.Error))
+            {
+                ImGui.TextColored(ColorMuted, self.Error);
+                return;
+            }
+
+            ImGui.Text($"自分: {self.CharacterName}");
+            ImGui.SameLine();
+            ImGui.TextColored(ColorFavorite, $"ContentId = 0x{self.ContentId:X}");
+            if (ImGui.IsItemClicked()) ImGui.SetClipboardText(self.ContentId.ToString());
+            AttachTooltip("クリックでコピーします。");
+
+            if (self.Retainers.Count == 0)
+            {
+                ImGui.TextColored(ColorMuted, "リテイナーが読み込まれていません。");
+                return;
+            }
+
+            ImGui.Spacing();
+            ImGui.TextWrapped(
+                "自分のリテイナーが出品しているアイテムをマーケットで検索し、その行のオーナーIDを見れば、" +
+                "「サーバーがそもそもオーナーIDを送っていないのか」がはっきりします。");
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (!ImGui.BeginTable("##probe_self_table", 4, flags)) return;
+
+            ImGui.TableSetupColumn("リテイナー", ImGuiTableColumnFlags.WidthStretch, 1f);
+            ImGui.TableSetupColumn("RetainerId", ImGuiTableColumnFlags.WidthFixed, 160);
+            ImGui.TableSetupColumn("一覧に居るか", ImGuiTableColumnFlags.WidthFixed, 150);
+            ImGui.TableSetupColumn("ContentId との関係", ImGuiTableColumnFlags.WidthStretch, 1.4f);
+            ImGui.TableHeadersRow();
+
+            foreach (var retainer in self.Retainers)
+            {
+                ImGui.TableNextRow();
+
+                ImGui.TableNextColumn();
+                ImGui.Text(retainer.Name);
+                if (retainer.SellingItems) AttachTooltip("マーケットに出品中です。");
+
+                ImGui.TableNextColumn();
+                ImGui.TextColored(ColorFavorite, $"0x{retainer.RetainerId:X}");
+                if (ImGui.IsItemClicked()) ImGui.SetClipboardText(retainer.RetainerId.ToString());
+
+                ImGui.TableNextColumn();
+                var match = _probeGameListings.FirstOrDefault(l => l.RetainerId == retainer.RetainerId);
+                if (match == null)
+                    ImGui.TextColored(ColorMuted, "いません");
+                else if (match.OwnerContentId == self.ContentId)
+                    ImGui.TextColored(ColorFavorite, "オーナーID一致");
+                else if (match.OwnerContentId != 0)
+                    ImGui.TextColored(ColorAccent, $"別のID 0x{match.OwnerContentId:X}");
+                else
+                    ImGui.TextColored(ColorMuted, "オーナーID = 0");
+
+                ImGui.TableNextColumn();
+                ImGui.TextColored(ColorMuted,
+                    SelfRetainerProbe.DescribeRelation(self.ContentId, retainer.RetainerId));
+            }
+
+            ImGui.EndTable();
+
+            ImGui.Spacing();
+            var found = self.Retainers.Any(r => _probeGameListings.Any(l => l.RetainerId == r.RetainerId));
+            if (!found)
+            {
+                ImGui.TextColored(ColorMuted,
+                    "※ 自分のリテイナーが出品しているアイテムを検索すると、この表で答え合わせができます。");
+            }
+            else
+            {
+                var mine = self.Retainers
+                    .Select(r => _probeGameListings.FirstOrDefault(l => l.RetainerId == r.RetainerId))
+                    .Where(l => l != null)
+                    .ToList();
+
+                if (mine.All(l => l!.OwnerContentId == 0))
+                    ImGui.TextColored(ColorAccent,
+                        "→ 自分の出品でもオーナーIDが 0 です。サーバーが誰の分も送っていないため、" +
+                        "出品者を識別子から特定することはできません。");
+                else
+                    ImGui.TextColored(ColorFavorite,
+                        "→ 自分の出品にはオーナーIDが入っています。他人の分も取れる可能性があります。");
+            }
         }
 
         private void RunProbe()

@@ -9,6 +9,8 @@ namespace MarketStats.UI
         private string _retainerSearch = string.Empty;
         private bool _retainerIdentifiedOnly;
         private ulong _selectedRetainerId;
+        private ulong _manualOwnerTarget;
+        private string _manualOwnerName = string.Empty;
 
         /// <summary>
         /// マーケットで見かけたリテイナーの台帳。持ち主が判明／推定できたものを一覧する。
@@ -189,9 +191,46 @@ namespace MarketStats.UI
             if (profile.GuessReasons.Count > 0)
             {
                 ImGui.Spacing();
-                ImGui.TextColored(ColorMuted, "推定の根拠:");
+                ImGui.TextColored(ColorMuted, profile.ManuallySet ? "設定:" : "推定の根拠:");
                 foreach (var reason in profile.GuessReasons)
                     ImGui.BulletText(reason);
+            }
+
+            // 推定が外れている場合に、正しい持ち主を手で入れて上書きできるようにする。
+            if (!profile.IsMine)
+            {
+                ImGui.Spacing();
+                ImGui.SetNextItemWidth(220);
+                if (_manualOwnerTarget != profile.RetainerId)
+                {
+                    _manualOwnerTarget = profile.RetainerId;
+                    _manualOwnerName = profile.ManuallySet ? profile.OwnerName ?? string.Empty : string.Empty;
+                }
+
+                var manual = _manualOwnerName;
+                if (ImGui.InputTextWithHint("##manual_owner", "持ち主を手動で入力", ref manual, 64))
+                    _manualOwnerName = manual;
+
+                ImGui.SameLine();
+                if (ImGui.Button("設定"))
+                {
+                    Plugin.Retainers.SetOwnerManually(profile.RetainerId, _manualOwnerName);
+                    Plugin.Retainers.Save(force: true);
+                }
+                AttachTooltip("分かっている持ち主を手で入力して確定させます。推定より優先されます。");
+
+                if (profile.ManuallySet || !string.IsNullOrEmpty(profile.GuessedOwnerName))
+                {
+                    ImGui.SameLine();
+                    if (ImGui.Button("消去"))
+                    {
+                        Plugin.Retainers.SetOwnerManually(profile.RetainerId, string.Empty);
+                        Plugin.Retainers.ClearGuess(profile.RetainerId, "手動で消去");
+                        Plugin.Retainers.Save(force: true);
+                        _manualOwnerName = string.Empty;
+                    }
+                    AttachTooltip("この推定・設定を取り消して「不明」に戻します。");
+                }
             }
 
             ImGui.Spacing();

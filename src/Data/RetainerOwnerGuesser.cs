@@ -18,12 +18,24 @@ namespace MarketStats.Data
         /// <summary>推定として採用する最低スコア。</summary>
         public const int MinimumScore = 60;
 
+        /// <summary>採用に必要な、一致した出品の最低件数。</summary>
+        public const int MinimumMatches = 2;
+
+        /// <summary>2 番手との最低スコア差。これを下回るなら「どちらとも言えない」として採用しない。</summary>
+        public const int MinimumMargin = 40;
+
         private sealed class Candidate
         {
             public int Score;
             public int Matches;
             public readonly List<string> Reasons = new();
             public long LatestMatchUnix;
+
+            /// <summary>数量の符合が確認できたか。</summary>
+            public bool QuantityMatched;
+
+            /// <summary>あなた自身の販売履歴（購入者が確実な情報）が根拠に含まれるか。</summary>
+            public bool FromOwnSales;
         }
 
         /// <summary>推定を更新する。更新できたリテイナー数を返す。</summary>
@@ -95,20 +107,37 @@ namespace MarketStats.Data
 
                 var ranked = candidates.OrderByDescending(c => c.Value.Score).ToList();
                 var best = ranked[0];
-                if (best.Value.Score < MinimumScore) continue;
+
+                // 誤った断定を避けるため、次の条件をすべて満たしたときだけ採用する。
+                //   ・十分なスコア
+                //   ・複数の出品で繰り返し一致している（偶然の同時期購入を排除）
+                //   ・数量が符合している
+                //   ・2 番手と明確な差がある（候補が割れているなら断定しない）
+                var reject = null as string;
+
+                if (best.Value.Score < MinimumScore)
+                    reject = "スコア不足";
+                else if (best.Value.Matches < MinimumMatches)
+                    reject = $"一致が {best.Value.Matches} 件のみ";
+                else if (!best.Value.QuantityMatched && !best.Value.FromOwnSales)
+                    reject = "数量の符合なし";
+                else if (ranked.Count > 1 && best.Value.Score - ranked[1].Value.Score < MinimumMargin)
+                    reject = $"候補が割れている（{best.Key} と {ranked[1].Key}）";
+
+                if (reject != null)
+                {
+                    // 条件を満たさないものは、以前の推定が残っていても取り下げる。
+                    registry.ClearGuess(retainerId, reject);
+                    continue;
+                }
 
                 var reasons = new List<string>(best.Value.Reasons)
                 {
                     $"{best.Value.Matches} 件の出品が、この人物の購入直後に現れています",
                 };
 
-                // 2 番手と僅差なら、その旨も残しておく（鵜呑みにしないため）。
                 if (ranked.Count > 1)
-                {
-                    var second = ranked[1];
-                    if (best.Value.Score - second.Value.Score < 30)
-                        reasons.Add($"他に {second.Key} も候補です（差が小さく確度は低め）");
-                }
+                    reasons.Add($"次点は {ranked[1].Key}（スコア差 {best.Value.Score - ranked[1].Value.Score}）");
 
                 registry.SetGuess(retainerId, best.Key, best.Value.Score, reasons);
                 updated++;
@@ -116,7 +145,7 @@ namespace MarketStats.Data
                 // オーナーの ContentId が判明しているリテイナーなら、
                 // 識別子と名前の対応としても覚えておく。
                 var profile = registry.Resolve(retainerId);
-                if (profile is { OwnerContentId: not 0 } && best.Value.Score >= MinimumScore + 60)
+                if (profile is { OwnerContentId: not 0 } && best.Value.Score >= MinimumScore + 120)
                     Plugin.Identities.RecordInference(profile.OwnerContentId, best.Key, best.Value.Score);
             }
 
@@ -159,14 +188,18 @@ namespace MarketStats.Data
                 if (purchasedQuantity == listing.Quantity)
                 {
                     score += 30;
+                    candidate.QuantityMatched = true;
                     AddReason(candidate, $"買った数と出品数が一致（{listing.Quantity:N0}個）");
                 }
                 else if (purchasedQuantity > listing.Quantity && purchasedQuantity % listing.Quantity == 0)
                 {
                     score += 15;
+                    candidate.QuantityMatched = true;
                     AddReason(candidate, $"買った数が出品数の倍数（{purchasedQuantity:N0} → {listing.Quantity:N0}個ずつ）");
                 }
             }
+
+            if (bonus > 0) candidate.FromOwnSales = true;
 
             candidate.Score += score;
             candidate.Matches++;
