@@ -36,6 +36,7 @@ namespace MarketStats.Game
             try
             {
                 Plugin.MarketBoard.OfferingsReceived += OnOfferingsReceived;
+                Plugin.MarketBoard.HistoryReceived += OnHistoryReceived;
                 _subscribed = true;
             }
             catch (Exception e)
@@ -75,6 +76,45 @@ namespace MarketStats.Game
             // 少し待ってから読む。
             _pendingRead = true;
             _readAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+        }
+
+        /// <summary>
+        /// マーケットの購入履歴を受け取る。
+        /// 「誰が買ったか」は公開情報なので、出品者（オーナー）の推定材料として蓄積する。
+        /// </summary>
+        private void OnHistoryReceived(Dalamud.Game.Network.Structures.IMarketBoardHistory history)
+        {
+            if (!Plugin.Config.EnableResaleTracking) return;
+
+            try
+            {
+                var world = LodestoneLink.GetCurrentWorld();
+                var purchases = new List<MarketPurchase>();
+
+                foreach (var listing in history.HistoryListings)
+                {
+                    if (listing == null) continue;
+
+                    purchases.Add(new MarketPurchase
+                    {
+                        ItemId = history.ItemId,
+                        Hq = listing.IsHq,
+                        BuyerName = listing.BuyerName ?? string.Empty,
+                        Quantity = (long)listing.Quantity,
+                        UnitPrice = (long)listing.SalePrice,
+                        UnixTime = new DateTimeOffset(listing.PurchaseTime.ToUniversalTime()).ToUnixTimeSeconds(),
+                        OnMannequin = listing.OnMannequin,
+                        WorldName = world,
+                    });
+                }
+
+                var added = Plugin.Purchases.Add(purchases);
+                if (added > 0) Plugin.Purchases.Save();
+            }
+            catch (Exception e)
+            {
+                Plugin.PluginLog.Warning($"購入履歴の取り込みに失敗しました: {e.Message}");
+            }
         }
 
         /// <summary>ゲーム内部の一覧に足りない情報を、パケット側の控えで補う。</summary>
@@ -152,6 +192,7 @@ namespace MarketStats.Game
             if (records.Count == 0) return;
 
             Plugin.Listings.Observe(records);
+            foreach (var record in records) Plugin.Retainers.Observe(record);
             ObservedListingCount += records.Count;
             LastObservedItemId = proxy->SearchItemId != 0 ? proxy->SearchItemId : records[0].ItemId;
 
@@ -278,6 +319,7 @@ namespace MarketStats.Game
             try
             {
                 Plugin.MarketBoard.OfferingsReceived -= OnOfferingsReceived;
+                Plugin.MarketBoard.HistoryReceived -= OnHistoryReceived;
             }
             catch
             {

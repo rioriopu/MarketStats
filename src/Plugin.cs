@@ -45,6 +45,8 @@ namespace MarketStats
         internal static readonly IdentityStore Identities = new();
         internal static readonly ListingStore Listings = new();
         internal static readonly PendingSaleStore Pending = new();
+        internal static readonly MarketHistoryStore Purchases = new();
+        internal static readonly RetainerRegistry Retainers = new();
         internal static readonly UniversalisClient Universalis = new();
 
         internal static RetainerHistoryCapture Capture { get; private set; } = null!;
@@ -76,10 +78,14 @@ namespace MarketStats
                 Identities.Load();
                 Listings.Load();
                 Pending.Load();
+                Purchases.Load();
+                Retainers.Load();
 
                 Store.Prune(Config, Favorites);
                 Listings.Prune(Config.ListingRetentionDays);
                 Pending.Prune(Config.ListingRetentionDays);
+                Purchases.Prune(Config.ListingRetentionDays);
+                Retainers.Prune(Config.ListingRetentionDays * 3);
                 Store.Save(force: true);
             }
             catch (Exception e)
@@ -231,10 +237,66 @@ namespace MarketStats
             Listings.Prune(Config.ListingRetentionDays);
             Pending.Prune(Config.ListingRetentionDays);
 
+            Purchases.Prune(Config.ListingRetentionDays);
+            Retainers.Prune(Config.ListingRetentionDays * 3);
+            RegisterOwnRetainers();
+            UpdateOwnerGuesses();
+
             Store.Save();
             Listings.Save();
             Pending.Save();
             Identities.Save();
+            Purchases.Save();
+            Retainers.Save();
+        }
+
+        /// <summary>自分のリテイナーを台帳に確定登録する（自分の出品を他人と混同しないため）。</summary>
+        private static unsafe void RegisterOwnRetainers()
+        {
+            try
+            {
+                if (!PlayerState.IsLoaded) return;
+
+                var manager = FFXIVClientStructs.FFXIV.Client.Game.RetainerManager.Instance();
+                if (manager == null || !manager->IsReady) return;
+
+                var owner = PlayerState.CharacterName;
+                var ownerId = PlayerState.ContentId;
+                var count = manager->GetRetainerCount();
+
+                for (uint i = 0; i < count; i++)
+                {
+                    var retainer = manager->GetRetainerBySortedIndex(i);
+                    if (retainer == null || retainer->RetainerId == 0) continue;
+                    Retainers.RegisterOwn(retainer->RetainerId, retainer->NameString, owner, ownerId);
+                }
+            }
+            catch (Exception e)
+            {
+                PluginLog.Debug($"自分のリテイナーを登録できませんでした: {e.Message}");
+            }
+        }
+
+        /// <summary>観測した出品と購入履歴を突き合わせ、リテイナーの持ち主を推定する。</summary>
+        private static void UpdateOwnerGuesses()
+        {
+            if (!Config.EnableResaleTracking || !Config.EnableOwnerInference) return;
+
+            try
+            {
+                var updated = RetainerOwnerGuesser.Update(
+                    Listings, Purchases, Store, Retainers, Config.ResaleWindowHours);
+
+                if (updated > 0)
+                {
+                    PluginLog.Debug($"リテイナー {updated} 件について持ち主の推定を更新しました。");
+                    _mainWindow?.InvalidateCache();
+                }
+            }
+            catch (Exception e)
+            {
+                PluginLog.Warning($"持ち主の推定に失敗しました: {e.Message}");
+            }
         }
 
         /// <summary>
@@ -334,6 +396,10 @@ namespace MarketStats
                     _mainWindow.RequestTab(MainWindow.Tab.Sellers);
                     _mainWindow.IsOpen = true;
                     break;
+                case "retainers":
+                    _mainWindow.RequestTab(MainWindow.Tab.Retainers);
+                    _mainWindow.IsOpen = true;
+                    break;
                 case "config":
                 case "settings":
                     _mainWindow.RequestTab(MainWindow.Tab.Settings);
@@ -390,6 +456,8 @@ namespace MarketStats
             Store.Save(force: true);
             Favorites.Save();
             Identities.Save(force: true);
+            Purchases.Save(force: true);
+            Retainers.Save(force: true);
             Listings.Save(force: true);
             Pending.Save(force: true);
 

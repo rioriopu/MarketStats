@@ -20,6 +20,7 @@ namespace MarketStats.UI
         private static readonly Vector4 ColorMuted = new(0.65f, 0.65f, 0.65f, 1f);
         private static readonly Vector4 ColorLink = new(0.55f, 0.78f, 1f, 1f);
         private static readonly Vector4 ColorAccent = new(1f, 0.85f, 0.45f, 1f);
+        private static readonly Vector4 ColorFavorite = new(1f, 0.82f, 0.3f, 1f);
 
         private List<ListingRecord> _listings = new();
         private DateTime _nextRefreshUtc = DateTime.MinValue;
@@ -106,6 +107,24 @@ namespace MarketStats.UI
         {
             if (listing.OwnerContentId == 0)
             {
+                // 識別子が無くても、リテイナー台帳に持ち主の推定があればそれを出す。
+                var profile = Plugin.Retainers.Resolve(listing.RetainerId);
+                if (profile != null && profile.IsMine)
+                {
+                    ImGui.TextColored(ColorFavorite, $"{profile.OwnerName}（自分）");
+                    return;
+                }
+
+                if (profile != null && !string.IsNullOrEmpty(profile.GuessedOwnerName))
+                {
+                    ImGui.TextColored(ColorAccent, $"{profile.GuessedOwnerName}（推定）");
+                    AttachTooltip(
+                        $"購入履歴と出品のタイミングから推定した持ち主です（スコア {profile.GuessScore}）。\n" +
+                        string.Join("\n", profile.GuessReasons.Select(r => "・" + r)) +
+                        "\n\n確定情報ではありません。");
+                    return;
+                }
+
                 // オーナーの識別子が届いていない場合でも、製作者署名があれば
                 // 「作った人」までは分かる（出品者と同一とは限らない）。
                 if (listing.ArtisanContentId != 0)

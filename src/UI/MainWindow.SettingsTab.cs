@@ -200,6 +200,17 @@ namespace MarketStats.UI
                     "出品者タブの「名刺」ボタンで調べたとき、読み取り後に名刺のウィンドウを閉じます。\n" +
                     "この照会はボタンを押した 1 件だけに対して行われ、まとめて自動照会することはありません。");
 
+                var inference = config.EnableOwnerInference;
+                if (ImGui.Checkbox("購入履歴からリテイナーの持ち主を推定する", ref inference))
+                {
+                    config.EnableOwnerInference = inference;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "マーケットの購入履歴には買い手の名前が公開されています。\n" +
+                    "「あるリテイナーが商品を出す直前に、同じ商品を買っていた人」を突き合わせて持ち主を推定します。\n" +
+                    "結果は「リテイナー」タブで確認できます。確定情報ではありません。");
+
                 var window = config.ResaleWindowHours;
                 ImGui.SetNextItemWidth(240);
                 if (ImGui.SliderInt("購入から何時間以内の出品を候補にするか", ref window, 1, 168))

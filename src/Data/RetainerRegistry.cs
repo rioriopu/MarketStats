@@ -1,0 +1,261 @@
+using System.IO;
+using System.Linq;
+using Newtonsoft.Json;
+
+namespace MarketStats.Data
+{
+    /// <summary>マーケットで見かけたリテイナーと、その持ち主についての情報。</summary>
+    public sealed class RetainerProfile
+    {
+        public ulong RetainerId { get; set; }
+        public string RetainerName { get; set; } = string.Empty;
+
+        /// <summary>確定しているオーナー名（自分のリテイナー、または名刺等で判明した場合）。</summary>
+        public string? OwnerName { get; set; }
+
+        /// <summary>オーナーの ContentId（取得できた場合のみ）。</summary>
+        public ulong OwnerContentId { get; set; }
+
+        /// <summary>推定したオーナー名。</summary>
+        public string? GuessedOwnerName { get; set; }
+
+        public int GuessScore { get; set; }
+
+        public List<string> GuessReasons { get; set; } = new();
+
+        /// <summary>自分のリテイナーか。</summary>
+        public bool IsMine { get; set; }
+
+        public long FirstSeenUnix { get; set; }
+        public long LastSeenUnix { get; set; }
+
+        /// <summary>これまでに観測した出品の数。</summary>
+        public int ObservedListings { get; set; }
+
+        /// <summary>観測した出品のアイテム（重複なし）。</summary>
+        public List<uint> ObservedItems { get; set; } = new();
+
+        [JsonIgnore]
+        public bool HasOwner => !string.IsNullOrEmpty(OwnerName);
+
+        [JsonIgnore]
+        public DateTime LastSeenLocal => DateTimeOffset.FromUnixTimeSeconds(LastSeenUnix).LocalDateTime;
+
+        /// <summary>表示用のオーナー表記。</summary>
+        [JsonIgnore]
+        public string DisplayOwner =>
+            !string.IsNullOrEmpty(OwnerName) ? OwnerName
+            : !string.IsNullOrEmpty(GuessedOwnerName) ? $"{GuessedOwnerName}（推定）"
+            : "不明";
+    }
+
+    /// <summary>
+    /// リテイナーの台帳。
+    ///
+    /// リテイナー名やリテイナー ID から持ち主を引く手段はゲームにも API にも無いため、
+    /// ここでは「観測したリテイナー」を蓄積し、確定情報（自分のリテイナー、名刺で判明した相手）と
+    /// 推定（購入履歴と出品タイミングの相関）を併せて保持する。
+    /// </summary>
+    public sealed class RetainerRegistry
+    {
+        private readonly Dictionary<ulong, RetainerProfile> _byId = new();
+        private readonly object _lock = new();
+        private bool _dirty;
+        private DateTime _lastSaveUtc = DateTime.MinValue;
+
+        private string FilePath =>
+            Path.Combine(Plugin.PluginInterface.GetPluginConfigDirectory(), "retainers.json");
+
+        public int Count
+        {
+            get { lock (_lock) return _byId.Count; }
+        }
+
+        public int IdentifiedCount
+        {
+            get
+            {
+                lock (_lock)
+                    return _byId.Values.Count(p => p.HasOwner || !string.IsNullOrEmpty(p.GuessedOwnerName));
+            }
+        }
+
+        public List<RetainerProfile> Snapshot()
+        {
+            lock (_lock) return _byId.Values.ToList();
+        }
+
+        /// <summary>観測した出品からリテイナーを記録する。</summary>
+        public void Observe(ListingRecord listing)
+        {
+            if (listing.RetainerId == 0) return;
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            lock (_lock)
+            {
+                if (!_byId.TryGetValue(listing.RetainerId, out var profile))
+                {
+                    profile = new RetainerProfile
+                    {
+                        RetainerId = listing.RetainerId,
+                        RetainerName = listing.RetainerName,
+                        FirstSeenUnix = now,
+                    };
+                    _byId[listing.RetainerId] = profile;
+                }
+
+                if (!string.IsNullOrEmpty(listing.RetainerName))
+                    profile.RetainerName = listing.RetainerName;
+
+                if (listing.OwnerContentId != 0)
+                {
+                    profile.OwnerContentId = listing.OwnerContentId;
+                    var identity = Plugin.Identities.Resolve(listing.OwnerContentId);
+                    if (identity is { Source: not IdentitySource.Inferred })
+                        profile.OwnerName = identity.Name;
+                }
+
+                profile.LastSeenUnix = now;
+                profile.ObservedListings++;
+                if (!profile.ObservedItems.Contains(listing.ItemId))
+                    profile.ObservedItems.Add(listing.ItemId);
+
+                _dirty = true;
+            }
+        }
+
+        /// <summary>自分のリテイナーを確定として登録する。</summary>
+        public void RegisterOwn(ulong retainerId, string retainerName, string ownerName, ulong ownerContentId)
+        {
+            if (retainerId == 0) return;
+
+            lock (_lock)
+            {
+                if (!_byId.TryGetValue(retainerId, out var profile))
+                {
+                    profile = new RetainerProfile
+                    {
+                        RetainerId = retainerId,
+                        FirstSeenUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    };
+                    _byId[retainerId] = profile;
+                }
+
+                profile.RetainerName = retainerName;
+                profile.OwnerName = ownerName;
+                profile.OwnerContentId = ownerContentId;
+                profile.IsMine = true;
+                profile.LastSeenUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                _dirty = true;
+            }
+        }
+
+        /// <summary>推定結果を書き込む。</summary>
+        public void SetGuess(ulong retainerId, string ownerName, int score, IEnumerable<string> reasons)
+        {
+            lock (_lock)
+            {
+                if (!_byId.TryGetValue(retainerId, out var profile)) return;
+                if (profile.HasOwner) return;               // 確定情報があるなら触らない
+                if (profile.GuessScore > score) return;     // より強い推定があるなら残す
+
+                profile.GuessedOwnerName = ownerName;
+                profile.GuessScore = score;
+                profile.GuessReasons = reasons.ToList();
+                _dirty = true;
+            }
+        }
+
+        public RetainerProfile? Resolve(ulong retainerId)
+        {
+            lock (_lock) return _byId.TryGetValue(retainerId, out var p) ? p : null;
+        }
+
+        public RetainerProfile? ResolveByName(string retainerName)
+        {
+            if (string.IsNullOrWhiteSpace(retainerName)) return null;
+            lock (_lock)
+                return _byId.Values
+                    .Where(p => string.Equals(p.RetainerName, retainerName, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(p => p.LastSeenUnix)
+                    .FirstOrDefault();
+        }
+
+        public int Prune(int retentionDays)
+        {
+            if (retentionDays <= 0) return 0;
+            var cutoff = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (long)retentionDays * 86400L;
+
+            int removed;
+            lock (_lock)
+            {
+                var stale = _byId.Where(kv => !kv.Value.IsMine && !kv.Value.HasOwner &&
+                                              kv.Value.LastSeenUnix < cutoff)
+                                 .Select(kv => kv.Key).ToList();
+                foreach (var key in stale) _byId.Remove(key);
+                removed = stale.Count;
+                if (removed > 0) _dirty = true;
+            }
+            return removed;
+        }
+
+        public void Clear()
+        {
+            lock (_lock)
+            {
+                _byId.Clear();
+                _dirty = true;
+            }
+            Save(force: true);
+        }
+
+        public void Load()
+        {
+            try
+            {
+                if (!File.Exists(FilePath)) return;
+                var list = JsonConvert.DeserializeObject<List<RetainerProfile>>(File.ReadAllText(FilePath));
+                lock (_lock)
+                {
+                    _byId.Clear();
+                    foreach (var p in list ?? new List<RetainerProfile>())
+                        if (p.RetainerId != 0) _byId[p.RetainerId] = p;
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.PluginLog.Warning($"リテイナー台帳の読み込みに失敗しました: {e.Message}");
+            }
+        }
+
+        public void Save(bool force = false)
+        {
+            lock (_lock)
+            {
+                if (!_dirty && !force) return;
+                if (!force && (DateTime.UtcNow - _lastSaveUtc).TotalSeconds < 30) return;
+            }
+
+            try
+            {
+                var dir = Plugin.PluginInterface.GetPluginConfigDirectory();
+                Directory.CreateDirectory(dir);
+
+                string json;
+                lock (_lock) json = JsonConvert.SerializeObject(_byId.Values.ToList(), Formatting.None);
+                File.WriteAllText(FilePath, json);
+
+                lock (_lock)
+                {
+                    _dirty = false;
+                    _lastSaveUtc = DateTime.UtcNow;
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.PluginLog.Warning($"リテイナー台帳の保存に失敗しました: {e.Message}");
+            }
+        }
+    }
+}

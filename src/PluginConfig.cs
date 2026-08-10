@@ -83,6 +83,9 @@ namespace MarketStats
         /// <summary>購入から何時間以内の出品を「再出品の候補」とみなすか。</summary>
         public int ResaleWindowHours { get; set; } = 24;
 
+        /// <summary>購入履歴と出品タイミングから、リテイナーの持ち主を推定する。</summary>
+        public bool EnableOwnerInference { get; set; } = true;
+
         /// <summary>観測した出品の保持日数。</summary>
         public int ListingRetentionDays { get; set; } = 14;
 
