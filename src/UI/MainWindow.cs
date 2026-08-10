@@ -22,6 +22,7 @@ namespace MarketStats.UI
             History,
             Sellers,
             Market,
+            Probe,
             Settings,
             Donation,
         }
@@ -81,6 +82,7 @@ namespace MarketStats.UI
             DrawTab("取引履歴", Tab.History, DrawHistoryTab);
             DrawTab("出品者", Tab.Sellers, DrawSellersTab);
             DrawTab("相場", Tab.Market, DrawMarketTab);
+            DrawTab("検証", Tab.Probe, DrawProbeTab);
             DrawTab("設定", Tab.Settings, DrawSettingsTab);
             DrawTab("ご支援", Tab.Donation, DrawDonationTab);
 

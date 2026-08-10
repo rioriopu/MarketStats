@@ -15,8 +15,11 @@ namespace MarketStats.Data
 
         public ulong RetainerId { get; set; }
 
-        /// <summary>出品リテイナーのオーナーの ContentId。Universalis 由来の場合は 0。</summary>
+        /// <summary>出品リテイナーのオーナーの ContentId。Universalis 由来の場合や、サーバーが送っていない場合は 0。</summary>
         public ulong OwnerContentId { get; set; }
+
+        /// <summary>製作者の ContentId（製作者署名のあるアイテムのみ）。出品者とは限らない。</summary>
+        public ulong ArtisanContentId { get; set; }
 
         public string RetainerName { get; set; } = string.Empty;
         public long UnitPrice { get; set; }

@@ -19,8 +19,14 @@ namespace MarketStats.Game
         private DateTime _readAfterUtc = DateTime.MinValue;
         private bool _subscribed;
 
+        /// <summary>直近にパケットから読み取った出品（ListingId をキーに補完へ使う）。</summary>
+        private readonly Dictionary<ulong, PacketListing> _packetListings = new();
+
         public int ObservedListingCount { get; private set; }
         public uint LastObservedItemId { get; private set; }
+
+        /// <summary>診断用: 直近にパケットから読めた出品の一覧。</summary>
+        public List<PacketListing> LastPacketListings { get; private set; } = new();
 
         /// <summary>出品を新たに観測したときに発火する。</summary>
         public event Action<uint>? ListingsObserved;
@@ -40,10 +46,51 @@ namespace MarketStats.Game
 
         private void OnOfferingsReceived(Dalamud.Game.Network.Structures.IMarketBoardCurrentOfferings offerings)
         {
+            // ゲーム内部の一覧に入らない情報（オーナーの ContentId や出品者名）が
+            // パケット側には残っていることがあるので、先に控えておく。
+            try
+            {
+                var packet = PacketListingProbe.Read(offerings);
+                LastPacketListings = packet;
+
+                foreach (var listing in packet)
+                {
+                    if (listing.ListingId != 0) _packetListings[listing.ListingId] = listing;
+
+                    // 出品者名がそのまま入っていれば、対応表へ登録する。
+                    if (listing.RetainerOwnerId != 0 && !string.IsNullOrWhiteSpace(listing.PlayerName))
+                        Plugin.Identities.Record(
+                            listing.RetainerOwnerId, listing.PlayerName, 0, Data.IdentitySource.MarketBoard);
+                }
+
+                // 古い情報が溜まり続けないように上限を設ける。
+                if (_packetListings.Count > 4000) _packetListings.Clear();
+            }
+            catch (Exception e)
+            {
+                Plugin.PluginLog.Warning($"出品パケットの読み取りに失敗しました: {e.Message}");
+            }
+
             // パケット処理の直後はゲーム側の一覧がまだ更新されていないことがあるため、
             // 少し待ってから読む。
             _pendingRead = true;
             _readAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+        }
+
+        /// <summary>ゲーム内部の一覧に足りない情報を、パケット側の控えで補う。</summary>
+        private void Enrich(ListingRecord record)
+        {
+            if (record.ListingId == 0) return;
+            if (!_packetListings.TryGetValue(record.ListingId, out var packet)) return;
+
+            if (record.OwnerContentId == 0 && packet.RetainerOwnerId != 0)
+                record.OwnerContentId = packet.RetainerOwnerId;
+
+            if (string.IsNullOrEmpty(record.RetainerName) && !string.IsNullOrEmpty(packet.RetainerName))
+                record.RetainerName = packet.RetainerName;
+
+            if (record.ArtisanContentId == 0 && packet.ArtisanId != 0)
+                record.ArtisanContentId = packet.ArtisanId;
         }
 
         public void Tick()
@@ -82,13 +129,14 @@ namespace MarketStats.Game
                 ref var listing = ref proxy->Listings[i];
                 if (listing.ItemId == 0 || listing.ListingId == 0) continue;
 
-                records.Add(new ListingRecord
+                var record = new ListingRecord
                 {
                     ItemId = listing.ItemId,
                     Hq = listing.IsHqItem,
                     ListingId = listing.ListingId,
                     RetainerId = listing.RetainerId,
                     OwnerContentId = listing.ContentId,
+                    ArtisanContentId = listing.ArtisanId,
                     RetainerName = listing.CharacterName.ToString(),
                     UnitPrice = listing.UnitPrice,
                     Quantity = listing.Quantity,
@@ -96,7 +144,9 @@ namespace MarketStats.Game
                     FirstSeenUnix = now,
                     LastSeenUnix = now,
                     Source = "game",
-                });
+                };
+                Enrich(record);
+                records.Add(record);
             }
 
             if (records.Count == 0) return;
@@ -129,13 +179,14 @@ namespace MarketStats.Game
                     ref var listing = ref proxy->Listings[i];
                     if (listing.ItemId == 0) continue;
 
-                    result.Add(new ListingRecord
+                    var record = new ListingRecord
                     {
                         ItemId = listing.ItemId,
                         Hq = listing.IsHqItem,
                         ListingId = listing.ListingId,
                         RetainerId = listing.RetainerId,
                         OwnerContentId = listing.ContentId,
+                        ArtisanContentId = listing.ArtisanId,
                         RetainerName = listing.CharacterName.ToString(),
                         UnitPrice = listing.UnitPrice,
                         Quantity = listing.Quantity,
@@ -143,7 +194,9 @@ namespace MarketStats.Game
                         FirstSeenUnix = now,
                         LastSeenUnix = now,
                         Source = "game",
-                    });
+                    };
+                    Enrich(record);
+                    result.Add(record);
                 }
             }
             catch (Exception e)
@@ -152,6 +205,71 @@ namespace MarketStats.Game
             }
 
             return result.OrderBy(r => r.UnitPrice).ToList();
+        }
+
+        /// <summary>
+        /// 診断用: いまゲームが保持している出品一覧の生の値をログへ出力する。
+        /// 出品者を特定できない原因（オーナー ID が送られてきているか）を切り分けるために使う。
+        /// </summary>
+        public void DumpListings()
+        {
+            try
+            {
+                var module = InfoModule.Instance();
+                if (module == null)
+                {
+                    Plugin.ChatGui.PrintError("[Market Stats] ゲーム内部の情報を取得できませんでした。");
+                    return;
+                }
+
+                var proxy = (InfoProxyItemSearch*)module->GetInfoProxyById(InfoProxyId.ItemSearch);
+                if (proxy == null)
+                {
+                    Plugin.ChatGui.PrintError("[Market Stats] 出品一覧の情報を取得できませんでした。");
+                    return;
+                }
+
+                var count = (int)Math.Min(proxy->ListingCount, 100u);
+                Plugin.PluginLog.Information(
+                    $"===== 出品一覧のダンプ: SearchItemId={proxy->SearchItemId} ListingCount={proxy->ListingCount} =====");
+
+                var withOwner = 0;
+                var withRetainer = 0;
+                var withArtisan = 0;
+                var withName = 0;
+
+                for (var i = 0; i < count; i++)
+                {
+                    ref var l = ref proxy->Listings[i];
+                    var name = l.CharacterName.ToString();
+
+                    if (l.ContentId != 0) withOwner++;
+                    if (l.RetainerId != 0) withRetainer++;
+                    if (l.ArtisanId != 0) withArtisan++;
+                    if (!string.IsNullOrEmpty(name)) withName++;
+
+                    Plugin.PluginLog.Information(
+                        $"[{i:D2}] item={l.ItemId} listing=0x{l.ListingId:X} retainer=0x{l.RetainerId:X} " +
+                        $"content=0x{l.ContentId:X} artisan=0x{l.ArtisanId:X} name='{name}' " +
+                        $"price={l.UnitPrice} qty={l.Quantity} hq={l.IsHqItem} mannequin={l.IsMannequin} town={l.TownId}");
+                }
+
+                Plugin.PluginLog.Information("===== ダンプここまで =====");
+
+                Plugin.ChatGui.Print(
+                    $"[Market Stats] 出品 {count} 件をログへ出力しました。" +
+                    $"オーナーID {withOwner} 件 / リテイナーID {withRetainer} 件 / 製作者ID {withArtisan} 件 / 名前 {withName} 件");
+
+                if (count > 0 && withOwner == 0)
+                    Plugin.ChatGui.Print(
+                        "[Market Stats] オーナーIDが 1 件も入っていません。" +
+                        "この状態では出品者のキャラクターを特定できません。");
+            }
+            catch (Exception e)
+            {
+                Plugin.PluginLog.Error($"出品一覧のダンプに失敗しました: {e}");
+                Plugin.ChatGui.PrintError($"[Market Stats] ダンプに失敗しました: {e.Message}");
+            }
         }
 
         public void Dispose()

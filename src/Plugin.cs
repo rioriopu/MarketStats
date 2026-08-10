@@ -343,6 +343,9 @@ namespace MarketStats
                     Capture.DumpArrays();
                     ChatGui.Print("[Market Stats] 売却履歴ウィンドウの配列をログへ出力しました。");
                     break;
+                case "listings":
+                    MarketWatcher.DumpListings();
+                    break;
                 default:
                     ChatGui.PrintError($"[Market Stats] 不明な引数です: {arg}");
                     break;

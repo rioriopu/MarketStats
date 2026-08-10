@@ -106,10 +106,35 @@ namespace MarketStats.UI
         {
             if (listing.OwnerContentId == 0)
             {
+                // オーナーの識別子が届いていない場合でも、製作者署名があれば
+                // 「作った人」までは分かる（出品者と同一とは限らない）。
+                if (listing.ArtisanContentId != 0)
+                {
+                    var artisan = Plugin.Identities.Resolve(listing.ArtisanContentId);
+                    if (artisan is { Source: not IdentitySource.Inferred })
+                    {
+                        ImGui.TextColored(ColorMuted, $"製作: {artisan.Name}");
+                        AttachTooltip("このアイテムの製作者です。出品者と同一とは限りません。");
+                        return;
+                    }
+
+                    var busyArtisan = Plugin.CharaCard.IsBusy;
+                    if (busyArtisan) ImGui.BeginDisabled();
+                    if (ImGui.SmallButton($"製作者##ar_{listing.ListingId}"))
+                        Plugin.CharaCard.Request(listing.ArtisanContentId);
+                    if (busyArtisan) ImGui.EndDisabled();
+
+                    AttachTooltip(
+                        "出品者の識別子は届いていませんが、製作者の署名があります。\n" +
+                        "製作者を調べます（自作品を出している場合は出品者と同一ですが、確実ではありません）。");
+                    return;
+                }
+
                 ImGui.TextColored(ColorMuted, "情報なし");
                 AttachTooltip(
-                    "この出品にはオーナーの識別子が含まれていませんでした。\n" +
-                    "ゲームのアップデートで読み取り位置がずれている可能性があります。");
+                    "この出品には出品者の識別子が含まれていませんでした。\n" +
+                    "サーバーがその値を送っていない可能性があります。\n" +
+                    "「検証」タブで、実際に何が届いているかを確認できます。");
                 return;
             }
 

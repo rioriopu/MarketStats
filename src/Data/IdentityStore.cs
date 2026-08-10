@@ -23,6 +23,9 @@ namespace MarketStats.Data
         /// <summary>自分自身。</summary>
         Self = 7,
 
+        /// <summary>マーケットの出品データに出品者名が入っていた場合。</summary>
+        MarketBoard = 8,
+
         /// <summary>冒険者名刺から直接取得（最も確実）。</summary>
         CharaCard = 9,
     }
