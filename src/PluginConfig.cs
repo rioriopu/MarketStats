@@ -101,6 +101,12 @@ namespace MarketStats
         /// <summary>マーケットの出品一覧を開いている間、その横に出品者の小窓を表示する。</summary>
         public bool ShowSellerOverlay { get; set; } = true;
 
+        /// <summary>
+        /// 「出品者を特定する」を、出品されているアイテムの行を右クリックしたときだけ出す。
+        /// false にすると、ウィンドウ枠の右クリックメニューにも出る。
+        /// </summary>
+        public bool SellerMenuOnItemRowOnly { get; set; } = true;
+
         // ---- UI ----
 
         /// <summary>起動時にウィンドウを開くか。</summary>

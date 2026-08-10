@@ -48,18 +48,25 @@ namespace MarketStats.Game
 
         private void OnMenuOpened(IMenuOpenedArgs args)
         {
-            LastMenuAddon = string.IsNullOrEmpty(args.AddonName) ? "(名前なし)" : args.AddonName;
+            var addon = string.IsNullOrEmpty(args.AddonName) ? "(名前なし)" : args.AddonName;
+            LastMenuAddon = $"{addon} / {args.MenuType}";
             LastMenuLocal = DateTime.Now;
 
             if (Plugin.Config.DebugMode)
                 Plugin.PluginLog.Information(
-                    $"コンテキストメニューが開きました: addon='{LastMenuAddon}' type={args.MenuType}");
+                    $"コンテキストメニューが開きました: addon='{addon}' type={args.MenuType} target={args.Target?.GetType().Name}");
 
             if (!Plugin.Config.EnableSellerContextMenu) return;
 
-            // アドオン名が期待どおりに入らないことがあるため、
-            // 「出品一覧が開いている間の右クリック」なら対象とみなす。
+            // マーケットの出品一覧（購入する画面）が開いているときだけ対象にする。
             if (args.AddonName != AddonName && !IsListingAddonVisible()) return;
+
+            // 同じ画面でも右クリックの対象によってメニューの種類が変わる。
+            //   Inventory … 出品されているアイテムの行を右クリックした場合（こちらに出したい）
+            //   Default   … ウィンドウ枠を右クリックした場合（「初期位置に戻す」等。ここには出さない）
+            // 環境によって種類の割り当てが違った場合に備え、設定で両方に出せるようにしている。
+            if (Plugin.Config.SellerMenuOnItemRowOnly && args.MenuType != ContextMenuType.Inventory)
+                return;
 
             // 出品が取れなくても項目自体は出す。取れない理由はクリック時に案内する
             // （項目ごと消えると、機能が無いのか失敗しているのか判別できないため）。

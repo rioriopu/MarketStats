@@ -161,9 +161,24 @@ namespace MarketStats.UI
                     config.Save();
                 }
                 AttachTooltip(
-                    "マーケットボードの出品一覧を右クリックしたときのメニューに項目を追加します。\n" +
+                    "マーケットボードで、出品されているアイテムの行を右クリックしたときのメニューに項目を追加します。\n" +
                     "対応表に名前があればその場で表示し、無ければ冒険者名刺で 1 件だけ照会します。\n" +
                     "結果はチャットに出ます（その相手があなたから買っていれば、その実績も表示します）。");
+
+                if (config.EnableSellerContextMenu)
+                {
+                    ImGui.Indent(20);
+                    var itemRowOnly = config.SellerMenuOnItemRowOnly;
+                    if (ImGui.Checkbox("アイテムの行を右クリックしたときだけ出す", ref itemRowOnly))
+                    {
+                        config.SellerMenuOnItemRowOnly = itemRowOnly;
+                        config.Save();
+                    }
+                    AttachTooltip(
+                        "オフにすると、ウィンドウ枠の右クリックメニュー（「初期位置に戻す」などが並ぶ方）にも出ます。\n" +
+                        "アイテムの行を右クリックしても項目が出ない場合は、こちらをオフにしてお試しください。");
+                    ImGui.Unindent(20);
+                }
 
                 var overlay = config.ShowSellerOverlay;
                 if (ImGui.Checkbox("出品一覧の横に出品者の小窓を表示する", ref overlay))
