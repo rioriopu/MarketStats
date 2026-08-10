@@ -92,6 +92,9 @@ namespace MarketStats
         /// <summary>Universalis の自動取得の間隔（分）。</summary>
         public int UniversalisTrackIntervalMinutes { get; set; } = 15;
 
+        /// <summary>冒険者名刺で出品者を調べたあと、名刺のウィンドウを自動で閉じる。</summary>
+        public bool CloseCharaCardAfterLookup { get; set; } = true;
+
         // ---- UI ----
 
         /// <summary>起動時にウィンドウを開くか。</summary>

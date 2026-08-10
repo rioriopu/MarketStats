@@ -41,6 +41,12 @@ namespace MarketStats.UI
                 "マーケットの出品情報に含まれるのはリテイナー名までですが、" +
                 "内部的にはオーナーごとの識別子が付いているため、同じ人物の出品はまとめて表示できます。");
 
+            if (!string.IsNullOrEmpty(Plugin.CharaCard.LastResult))
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorAccent, $"名刺照会: {Plugin.CharaCard.LastResult}");
+            }
+
             ImGui.Spacing();
             ImGui.Checkbox("出品者ごとにまとめる", ref _sellersGroupByOwner);
             ImGui.SameLine();
@@ -185,7 +191,11 @@ namespace MarketStats.UI
                 AttachTooltip(
                     "この出品者の名前はまだ分かっていません。\n" +
                     "同じ識別子の出品は同一人物としてまとめられます。\n" +
-                    "その人物を街などで見かけるか、あなたの購入履歴と結びつくと名前が判明します。");
+                    "その人物を街などで見かけるか、あなたの購入履歴と結びつくと名前が判明します。\n" +
+                    "右の「名刺」ボタンで、冒険者名刺から直接調べることもできます。");
+
+                ImGui.SameLine();
+                DrawCharaCardButton(contentId);
                 return;
             }
 
@@ -194,7 +204,10 @@ namespace MarketStats.UI
                 ImGui.TextColored(ColorAccent, $"{identity.Name}（推定）");
                 AttachTooltip(
                     $"あなたの販売履歴と出品タイミングの一致から推定した名前です（確信度スコア {identity.InferenceScore}）。\n" +
-                    "確定情報ではありません。");
+                    "確定情報ではありません。「名刺」ボタンで確認できます。");
+
+                ImGui.SameLine();
+                DrawCharaCardButton(contentId);
                 return;
             }
 
@@ -203,6 +216,26 @@ namespace MarketStats.UI
             AttachTooltip(
                 $"出所: {DescribeSource(identity.Source)}\n" +
                 "クリックで Lodestone のキャラクター検索を開きます。");
+        }
+
+        /// <summary>
+        /// 冒険者名刺で出品者を調べるボタン。
+        /// サーバーへの問い合わせを伴うため、押した 1 件だけを照会する。
+        /// </summary>
+        private static void DrawCharaCardButton(ulong contentId)
+        {
+            var busy = Plugin.CharaCard.IsBusy;
+            if (busy) ImGui.BeginDisabled();
+
+            if (ImGui.SmallButton($"名刺##card_{contentId}"))
+                Plugin.CharaCard.Request(contentId);
+
+            if (busy) ImGui.EndDisabled();
+
+            AttachTooltip(
+                "この出品者の冒険者名刺を開いて、名前とワールドを調べます。\n" +
+                "フレンドリストから名刺を開くのと同じ操作を 1 回行います（サーバーへの問い合わせが発生します）。\n" +
+                "一度調べた相手は対応表に残るので、次からは自動で名前が表示されます。");
         }
 
         /// <summary>その出品者と自分との取引実績（買われたことがあるか）を表示する。</summary>

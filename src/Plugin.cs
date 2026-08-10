@@ -51,6 +51,7 @@ namespace MarketStats
         internal static MarketBoardWatcher MarketWatcher { get; private set; } = null!;
         internal static RetainerSellListWatcher SellListWatcher { get; private set; } = null!;
         internal static SaleHistoryAutoOpen AutoOpen { get; private set; } = null!;
+        internal static CharaCardLookup CharaCard { get; private set; } = null!;
 
         private static MainWindow? _mainWindow;
         private static WindowSystem? _windowSystem;
@@ -100,6 +101,8 @@ namespace MarketStats
             AutoOpen = new SaleHistoryAutoOpen();
             AutoOpen.Initialize();
 
+            CharaCard = new CharaCardLookup();
+
             _windowSystem = new WindowSystem("MarketStats");
             _mainWindow = new MainWindow { IsOpen = Config.AutoOpenOnLoad };
             _windowSystem.AddWindow(_mainWindow);
@@ -139,6 +142,7 @@ namespace MarketStats
                 IdentityCollector.Tick();
                 MarketWatcher.Tick();
                 SellListWatcher.Tick();
+                CharaCard.Tick();
 
                 DrainCaptures();
                 RunMaintenance();

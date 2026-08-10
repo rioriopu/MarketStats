@@ -154,6 +154,16 @@ namespace MarketStats.UI
                     "周囲に見えたプレイヤーや、フレンド / FC / リンクシェルのメンバーから\n" +
                     "識別子とキャラクター名の対応を集めます。ローカルに保存するだけで外部送信はしません。");
 
+                var closeCard = config.CloseCharaCardAfterLookup;
+                if (ImGui.Checkbox("名刺で出品者を調べたあと、名刺を自動で閉じる", ref closeCard))
+                {
+                    config.CloseCharaCardAfterLookup = closeCard;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "出品者タブの「名刺」ボタンで調べたとき、読み取り後に名刺のウィンドウを閉じます。\n" +
+                    "この照会はボタンを押した 1 件だけに対して行われ、まとめて自動照会することはありません。");
+
                 var window = config.ResaleWindowHours;
                 ImGui.SetNextItemWidth(240);
                 if (ImGui.SliderInt("購入から何時間以内の出品を候補にするか", ref window, 1, 168))

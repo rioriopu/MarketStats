@@ -83,7 +83,11 @@ dotnet build -c Release
 |---|---|
 | 周囲のプレイヤー | `Character.ContentId`（0x2358）+ ObjectTable |
 | フレンド / FC / LS / パーティ | `InfoProxyCommonList.CharDataSpan`（ContentId + Name + HomeWorld）|
+| 冒険者名刺 | `AgentCharaCard.OpenCharaCard(contentId)` → `Storage.Name` / `WorldId` |
 | 推定 | 売却履歴と出品タイミングの相関（`ResaleAnalyzer`）|
+
+名刺照会（`CharaCardLookup`）はサーバーへの問い合わせを伴うので、
+ユーザーがボタンを押した 1 件だけを実行する。一覧の一括自動照会はしない。
 
 出所は `IdentitySource` の値が大きいほど強く、弱い出所で確定情報を塗り潰さない。
 
