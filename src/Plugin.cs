@@ -56,6 +56,7 @@ namespace MarketStats
         internal static MarketContextMenu SellerMenu { get; private set; } = null!;
 
         private static MainWindow? _mainWindow;
+        private static SellerOverlayWindow? _sellerOverlay;
         private static WindowSystem? _windowSystem;
 
         private static DateTime _nextMaintenanceUtc = DateTime.MinValue;
@@ -111,6 +112,11 @@ namespace MarketStats
             _windowSystem = new WindowSystem("MarketStats");
             _mainWindow = new MainWindow { IsOpen = Config.AutoOpenOnLoad };
             _windowSystem.AddWindow(_mainWindow);
+
+            // 出品一覧を開いている間だけ横に出る小窓。IsOpen は常に true で、
+            // 実際に描くかどうかは DrawConditions() が判定する。
+            _sellerOverlay = new SellerOverlayWindow { IsOpen = true };
+            _windowSystem.AddWindow(_sellerOverlay);
 
             CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
             {
@@ -387,6 +393,7 @@ namespace MarketStats
             _windowSystem?.RemoveAllWindows();
             _windowSystem = null;
             _mainWindow = null;
+            _sellerOverlay = null;
         }
     }
 }

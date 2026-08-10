@@ -41,15 +41,31 @@ namespace MarketStats.Game
             }
         }
 
+        /// <summary>直近にコンテキストメニューが開いたアドオン名（診断用）。</summary>
+        public string LastMenuAddon { get; private set; } = "（まだ開いていません）";
+
+        public DateTime LastMenuLocal { get; private set; } = DateTime.MinValue;
+
         private void OnMenuOpened(IMenuOpenedArgs args)
         {
+            LastMenuAddon = string.IsNullOrEmpty(args.AddonName) ? "(名前なし)" : args.AddonName;
+            LastMenuLocal = DateTime.Now;
+
+            if (Plugin.Config.DebugMode)
+                Plugin.PluginLog.Information(
+                    $"コンテキストメニューが開きました: addon='{LastMenuAddon}' type={args.MenuType}");
+
             if (!Plugin.Config.EnableSellerContextMenu) return;
-            if (args.AddonName != AddonName) return;
 
+            // アドオン名が期待どおりに入らないことがあるため、
+            // 「出品一覧が開いている間の右クリック」なら対象とみなす。
+            if (args.AddonName != AddonName && !IsListingAddonVisible()) return;
+
+            // 出品が取れなくても項目自体は出す。取れない理由はクリック時に案内する
+            // （項目ごと消えると、機能が無いのか失敗しているのか判別できないため）。
             var listing = ResolveSelectedListing();
-            if (listing == null) return;
 
-            var identity = listing.OwnerContentId != 0
+            var identity = listing is { OwnerContentId: not 0 }
                 ? Plugin.Identities.Resolve(listing.OwnerContentId)
                 : null;
 
@@ -77,8 +93,16 @@ namespace MarketStats.Game
             }
         }
 
-        private void OnClicked(ListingRecord listing)
+        private void OnClicked(ListingRecord? listing)
         {
+            if (listing == null)
+            {
+                Plugin.ChatGui.PrintError(
+                    "[Market Stats] 選択されている出品を特定できませんでした。" +
+                    "行を一度クリックして選んでから、もう一度お試しください。");
+                return;
+            }
+
             if (listing.OwnerContentId == 0)
             {
                 Plugin.ChatGui.Print("[Market Stats] この出品にはオーナーの情報が含まれていませんでした。");
@@ -182,6 +206,20 @@ namespace MarketStats.Game
             catch
             {
                 return string.Empty;
+            }
+        }
+
+        /// <summary>マーケットの出品一覧（購入する画面）が表示されているか。</summary>
+        private static bool IsListingAddonVisible()
+        {
+            try
+            {
+                var ptr = Plugin.GameGui.GetAddonByName(AddonName, 1);
+                return !ptr.IsNull && ptr.IsVisible;
+            }
+            catch
+            {
+                return false;
             }
         }
 

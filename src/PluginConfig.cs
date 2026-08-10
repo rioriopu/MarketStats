@@ -98,6 +98,9 @@ namespace MarketStats
         /// <summary>マーケットボードの出品を右クリックしたときに「出品者を特定する」を出す。</summary>
         public bool EnableSellerContextMenu { get; set; } = true;
 
+        /// <summary>マーケットの出品一覧を開いている間、その横に出品者の小窓を表示する。</summary>
+        public bool ShowSellerOverlay { get; set; } = true;
+
         // ---- UI ----
 
         /// <summary>起動時にウィンドウを開くか。</summary>

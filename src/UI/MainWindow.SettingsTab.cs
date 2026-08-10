@@ -165,6 +165,16 @@ namespace MarketStats.UI
                     "対応表に名前があればその場で表示し、無ければ冒険者名刺で 1 件だけ照会します。\n" +
                     "結果はチャットに出ます（その相手があなたから買っていれば、その実績も表示します）。");
 
+                var overlay = config.ShowSellerOverlay;
+                if (ImGui.Checkbox("出品一覧の横に出品者の小窓を表示する", ref overlay))
+                {
+                    config.ShowSellerOverlay = overlay;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "マーケットボードでアイテムの出品一覧を開いている間だけ、その横に小窓を出します。\n" +
+                    "各行の出品者名と、分からない相手を調べる「特定」ボタンが並びます。");
+
                 var closeCard = config.CloseCharaCardAfterLookup;
                 if (ImGui.Checkbox("名刺で出品者を調べたあと、名刺を自動で閉じる", ref closeCard))
                 {
@@ -435,6 +445,16 @@ namespace MarketStats.UI
                         "自動取り込みが使えない状態です。ゲームのアップデート直後などに起こります。" +
                         "この場合でも、ゲーム内の売却履歴ウィンドウを開けば取り込みは行われます。");
                 }
+
+                ImGui.Spacing();
+                ImGui.Text($"直近の右クリックメニュー: {Plugin.SellerMenu.LastMenuAddon}" +
+                           (Plugin.SellerMenu.LastMenuLocal == DateTime.MinValue
+                               ? string.Empty
+                               : $" ({Plugin.SellerMenu.LastMenuLocal:HH:mm:ss})"));
+                AttachTooltip(
+                    "最後にコンテキストメニューが開いたときのアドオン名です。\n" +
+                    "マーケットの出品を右クリックしたあとにここを見ると、" +
+                    "どの画面として認識されているかが分かります。");
 
                 ImGui.Spacing();
                 if (ImGui.Button("売却履歴ウィンドウの内部データをログへ出力"))
