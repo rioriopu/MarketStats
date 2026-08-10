@@ -154,6 +154,17 @@ namespace MarketStats.UI
                     "周囲に見えたプレイヤーや、フレンド / FC / リンクシェルのメンバーから\n" +
                     "識別子とキャラクター名の対応を集めます。ローカルに保存するだけで外部送信はしません。");
 
+                var menu = config.EnableSellerContextMenu;
+                if (ImGui.Checkbox("マーケットの出品を右クリックしたら「出品者を特定する」を出す", ref menu))
+                {
+                    config.EnableSellerContextMenu = menu;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "マーケットボードの出品一覧を右クリックしたときのメニューに項目を追加します。\n" +
+                    "対応表に名前があればその場で表示し、無ければ冒険者名刺で 1 件だけ照会します。\n" +
+                    "結果はチャットに出ます（その相手があなたから買っていれば、その実績も表示します）。");
+
                 var closeCard = config.CloseCharaCardAfterLookup;
                 if (ImGui.Checkbox("名刺で出品者を調べたあと、名刺を自動で閉じる", ref closeCard))
                 {

@@ -31,6 +31,7 @@ namespace MarketStats
         [PluginService] internal static IGameInteropProvider GameInterop { get; private set; } = null!;
         [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
         [PluginService] internal static IMarketBoard MarketBoard { get; private set; } = null!;
+        [PluginService] internal static IContextMenu ContextMenu { get; private set; } = null!;
 
         private const string CommandName = "/marketstats";
         private const string CommandShort = "/mstats";
@@ -52,6 +53,7 @@ namespace MarketStats
         internal static RetainerSellListWatcher SellListWatcher { get; private set; } = null!;
         internal static SaleHistoryAutoOpen AutoOpen { get; private set; } = null!;
         internal static CharaCardLookup CharaCard { get; private set; } = null!;
+        internal static MarketContextMenu SellerMenu { get; private set; } = null!;
 
         private static MainWindow? _mainWindow;
         private static WindowSystem? _windowSystem;
@@ -102,6 +104,9 @@ namespace MarketStats
             AutoOpen.Initialize();
 
             CharaCard = new CharaCardLookup();
+
+            SellerMenu = new MarketContextMenu();
+            SellerMenu.Attach();
 
             _windowSystem = new WindowSystem("MarketStats");
             _mainWindow = new MainWindow { IsOpen = Config.AutoOpenOnLoad };
@@ -366,6 +371,7 @@ namespace MarketStats
             Store.SalesAdded -= OnSalesAdded;
             Capture.HistoryWindowOpened -= OnHistoryWindowOpened;
 
+            SellerMenu.Dispose();
             AutoOpen.Dispose();
             SellListWatcher.Dispose();
             MarketWatcher.Dispose();

@@ -89,6 +89,10 @@ dotnet build -c Release
 名刺照会（`CharaCardLookup`）はサーバーへの問い合わせを伴うので、
 ユーザーがボタンを押した 1 件だけを実行する。一覧の一括自動照会はしない。
 
+`MarketContextMenu` は `ItemSearchResult` の右クリックメニューに「出品者を特定する」を追加する。
+右クリックされた行は `AgentItemSearch.ResultSelectedIndex`、
+出品データは同 Agent の `InfoProxyItemSearch*`（`Listings[index].ContentId`）から取る。
+
 出所は `IdentitySource` の値が大きいほど強く、弱い出所で確定情報を塗り潰さない。
 
 ## 再出品の推定

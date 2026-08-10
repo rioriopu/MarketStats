@@ -27,6 +27,12 @@ namespace MarketStats.Game
 
         public string LastResult { get; private set; } = string.Empty;
 
+        /// <summary>名前が判明したときに発火する（ContentId, 名前, ワールドID）。</summary>
+        public event Action<ulong, string, ushort>? Resolved;
+
+        /// <summary>照会が名前を得られずに終わったときに発火する。</summary>
+        public event Action<ulong, string>? Failed;
+
         /// <summary>指定した ContentId の冒険者名刺を開いて名前を読み取る。</summary>
         public bool Request(ulong contentId)
         {
@@ -62,7 +68,9 @@ namespace MarketStats.Game
             if (DateTime.UtcNow - _requestedAtUtc > Timeout)
             {
                 LastResult = "応答がありませんでした。";
+                var timedOut = _pendingContentId;
                 _pendingContentId = 0;
+                Failed?.Invoke(timedOut, "名刺の応答がありませんでした。");
                 return;
             }
 
@@ -81,10 +89,14 @@ namespace MarketStats.Game
                 LastResult = $"{name} と判明しました。";
                 Plugin.PluginLog.Information($"冒険者名刺から出品者を特定しました: {name}");
 
+                var resolvedId = _pendingContentId;
+                var worldId = data->WorldId;
                 _pendingContentId = 0;
 
                 if (Plugin.Config.CloseCharaCardAfterLookup)
                     CloseAddon();
+
+                Resolved?.Invoke(resolvedId, name, worldId);
             }
             catch (Exception e)
             {

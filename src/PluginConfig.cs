@@ -95,6 +95,9 @@ namespace MarketStats
         /// <summary>冒険者名刺で出品者を調べたあと、名刺のウィンドウを自動で閉じる。</summary>
         public bool CloseCharaCardAfterLookup { get; set; } = true;
 
+        /// <summary>マーケットボードの出品を右クリックしたときに「出品者を特定する」を出す。</summary>
+        public bool EnableSellerContextMenu { get; set; } = true;
+
         // ---- UI ----
 
         /// <summary>起動時にウィンドウを開くか。</summary>
