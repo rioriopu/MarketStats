@@ -58,6 +58,7 @@ namespace MarketStats
         internal static CharaCardLookup CharaCard { get; private set; } = null!;
         internal static MarketContextMenu SellerMenu { get; private set; } = null!;
         internal static ChatRetainerWatcher ChatWatcher { get; private set; } = null!;
+        internal static MarketTaps Taps { get; private set; } = null!;
 
         private static MainWindow? _mainWindow;
         private static SellerOverlayWindow? _sellerOverlay;
@@ -119,6 +120,9 @@ namespace MarketStats
 
             ChatWatcher = new ChatRetainerWatcher();
             ChatWatcher.Initialize();
+
+            Taps = new MarketTaps();
+            Taps.Initialize();
 
             _windowSystem = new WindowSystem("MarketStats");
             _mainWindow = new MainWindow { IsOpen = Config.AutoOpenOnLoad };
@@ -467,6 +471,7 @@ namespace MarketStats
             Store.SalesAdded -= OnSalesAdded;
             Capture.HistoryWindowOpened -= OnHistoryWindowOpened;
 
+            Taps.Dispose();
             ChatWatcher.Dispose();
             SellerMenu.Dispose();
             AutoOpen.Dispose();

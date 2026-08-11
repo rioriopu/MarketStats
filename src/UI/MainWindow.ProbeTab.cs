@@ -48,6 +48,8 @@ namespace MarketStats.UI
                 $"出品者名の項目: {(PacketListingProbe.HasPlayerNameProperty ? "あり" : "なし")}");
 
             ImGui.Spacing();
+            DrawTapsSection();
+            ImGui.Spacing();
             DrawSelfSection();
             ImGui.Spacing();
             DrawMemoryScanSection();
@@ -163,6 +165,119 @@ namespace MarketStats.UI
                 else
                     ImGui.TextColored(ColorFavorite,
                         "→ 自分の出品にはオーナーIDが入っています。他人の分も取れる可能性があります。");
+            }
+        }
+
+        private int _selectedCapture = -1;
+
+        /// <summary>
+        /// マーケット関連の各フック地点の状態と、そこで捕まえた生データを表示する。
+        /// 構造体から読めない情報が、届いたデータの中には入っていないかを確かめる。
+        /// </summary>
+        private void DrawTapsSection()
+        {
+            if (!ImGui.CollapsingHeader("フックした地点###probe_taps", ImGuiTreeNodeFlags.DefaultOpen))
+                return;
+
+            ImGui.TextWrapped(
+                "マーケットのデータがゲーム内部に取り込まれる瞬間を、複数の地点で捕まえています。" +
+                "生データの取り込みを有効にすると、届いた内容を解析して" +
+                "識別子や名前が含まれていないかを自動で調べます。");
+
+            ImGui.Spacing();
+
+            var capture = Plugin.Config.EnablePacketCapture;
+            if (ImGui.Checkbox("届いた生データを取り込んで解析する（診断用）", ref capture))
+            {
+                Plugin.Config.EnablePacketCapture = capture;
+                Plugin.Config.Save();
+            }
+            AttachTooltip(
+                "フック地点に届いたデータの先頭 512 バイトを取り込み、\n" +
+                "自分の ContentId やリテイナー ID、名前らしき文字列が含まれるかを調べます。\n" +
+                "調査が済んだら無効に戻してください。");
+
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (ImGui.BeginTable("##taps", 4, flags))
+            {
+                ImGui.TableSetupColumn("地点", ImGuiTableColumnFlags.WidthFixed, 150);
+                ImGui.TableSetupColumn("状態", ImGuiTableColumnFlags.WidthFixed, 90);
+                ImGui.TableSetupColumn("回数", ImGuiTableColumnFlags.WidthFixed, 60);
+                ImGui.TableSetupColumn("直近の結果", ImGuiTableColumnFlags.WidthStretch, 2f);
+                ImGui.TableHeadersRow();
+
+                foreach (var status in Plugin.Taps.Statuses)
+                {
+                    ImGui.TableNextRow();
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text(status.Name);
+                    AttachTooltip(status.Purpose);
+
+                    ImGui.TableNextColumn();
+                    if (status.Active) ImGui.TextColored(ColorFavorite, "設置済み");
+                    else ImGui.TextColored(ColorAccent, "未設置");
+                    AttachTooltip(status.Detail);
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text($"{status.HitCount}");
+                    if (status.LastHitLocal != DateTime.MinValue)
+                        AttachTooltip($"直近 {status.LastHitLocal:HH:mm:ss}");
+
+                    ImGui.TableNextColumn();
+                    ImGui.TextWrapped(string.IsNullOrEmpty(status.LastFinding) ? "-" : status.LastFinding);
+                }
+
+                ImGui.EndTable();
+            }
+
+            var captures = Plugin.Taps.Captures;
+            if (captures.Count == 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted,
+                    "取り込んだデータはまだありません。上を有効にしてから、" +
+                    "マーケットボードでアイテムの購入履歴や出品一覧を開いてください。");
+                return;
+            }
+
+            ImGui.Spacing();
+            ImGui.TextColored(ColorMuted, $"取り込んだデータ: {captures.Count} 件");
+
+            for (var i = 0; i < captures.Count; i++)
+            {
+                var item = captures[i];
+                var label = $"{item.Local:HH:mm:ss} {item.Source} — 発見 {item.Findings.Count} 件##cap{i}";
+
+                if (!ImGui.CollapsingHeader(label)) continue;
+
+                ImGui.Indent(12);
+
+                if (item.Findings.Count == 0)
+                    ImGui.TextColored(ColorMuted, "識別子・名前らしき値は見つかりませんでした。");
+                else
+                    foreach (var finding in item.Findings.Take(20))
+                        ImGui.BulletText(finding);
+
+                if (ImGui.SmallButton($"生データをコピー##cap_copy{i}"))
+                    ImGui.SetClipboardText(item.ToHex());
+
+                ImGui.SameLine();
+                if (ImGui.SmallButton($"生データを表示##cap_show{i}"))
+                    _selectedCapture = _selectedCapture == i ? -1 : i;
+
+                if (_selectedCapture == i)
+                {
+                    if (ImGui.BeginChild($"##cap_view{i}", new System.Numerics.Vector2(0, 220), true))
+                        ImGui.TextUnformatted(item.ToHex());
+                    ImGui.EndChild();
+                }
+
+                ImGui.Unindent(12);
             }
         }
 

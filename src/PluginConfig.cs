@@ -89,6 +89,9 @@ namespace MarketStats
         /// <summary>チャットでリテイナー名に言及した発言を手がかりに使う。</summary>
         public bool EnableChatRetainerWatch { get; set; } = false;
 
+        /// <summary>マーケット関連のフック地点で、届いた生データを取り込んで解析する（診断用）。</summary>
+        public bool EnablePacketCapture { get; set; } = false;
+
         /// <summary>推定した名前が実在するかを Lodestone で確認する（外部通信）。</summary>
         public bool VerifyNamesOnLodestone { get; set; } = false;
 
