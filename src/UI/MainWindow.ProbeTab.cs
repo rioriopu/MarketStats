@@ -48,6 +48,8 @@ namespace MarketStats.UI
                 $"出品者名の項目: {(PacketListingProbe.HasPlayerNameProperty ? "あり" : "なし")}");
 
             ImGui.Spacing();
+            DrawOwnerLookupSection();
+            ImGui.Spacing();
             DrawTapsSection();
             ImGui.Spacing();
             DrawSelfSection();
@@ -289,6 +291,9 @@ namespace MarketStats.UI
             }
         }
 
+        private RetainerOwnerProbe.ProbeResult? _ownerProbe;
+        private string _retainerIdInput = string.Empty;
+
         private string _scanInput = string.Empty;
         private List<ScanHit> _scanHits = new();
         private string _scanSummary = string.Empty;
@@ -493,6 +498,10 @@ namespace MarketStats.UI
 
                 ImGui.TableNextColumn();
                 DrawIdCell(l.RetainerId);
+                ImGui.SameLine();
+                if (ImGui.SmallButton($"探す##own_{i}"))
+                    _ownerProbe = RetainerOwnerProbe.TryResolve(l.RetainerId);
+                AttachTooltip("このリテイナー ID から持ち主を辿れないか、考えられる方法を順に試します。");
 
                 ImGui.TableNextColumn();
                 DrawIdCell(l.OwnerContentId);
@@ -502,6 +511,118 @@ namespace MarketStats.UI
             }
 
             ImGui.EndTable();
+        }
+
+        /// <summary>
+        /// リテイナー ID を起点に、持ち主へ辿り着けないかを試すセクション。
+        /// 出品一覧の「探す」ボタンからもここに結果が出る。
+        /// </summary>
+        private void DrawOwnerLookupSection()
+        {
+            if (!ImGui.CollapsingHeader("リテイナー ID から持ち主を探す###probe_owner",
+                    ImGuiTreeNodeFlags.DefaultOpen))
+                return;
+
+            ImGui.TextWrapped(
+                "リテイナー ID を起点に、考えられる経路を順に試します。" +
+                "下の「ゲーム内部の一覧」にある「探す」ボタンからも実行できます。");
+
+            ImGui.Spacing();
+            ImGui.SetNextItemWidth(280);
+            var retainerInput = _retainerIdInput;
+            if (ImGui.InputTextWithHint("##retainer_id_input",
+                    "リテイナー ID（例 33776997236783377）", ref retainerInput, 32))
+                _retainerIdInput = retainerInput;
+
+            ImGui.SameLine();
+            if (ImGui.Button("持ち主を探す"))
+            {
+                var text = _retainerIdInput.Trim();
+                ulong id = 0;
+                var ok = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? ulong.TryParse(text[2..], System.Globalization.NumberStyles.HexNumber, null, out id)
+                    : ulong.TryParse(text, out id);
+
+                _ownerProbe = ok && id != 0 ? RetainerOwnerProbe.TryResolve(id) : null;
+                if (_ownerProbe == null)
+                    ImGui.SetClipboardText(string.Empty);
+            }
+            AttachTooltip(
+                "10 進でも 0x 付きの 16 進でも指定できます。\n" +
+                "台帳 / 対応表 / ゲーム内のリスト / 識別子の変換 / 周辺メモリ / 製作者署名 の順に試します。");
+
+            DrawOwnerProbeResult();
+        }
+
+        /// <summary>リテイナー ID から持ち主を辿る試行の結果。</summary>
+        private void DrawOwnerProbeResult()
+        {
+            if (_ownerProbe == null) return;
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.TextColored(ColorAccent,
+                $"リテイナー ID 0x{_ownerProbe.RetainerId:X} からの追跡結果" +
+                (string.IsNullOrEmpty(_ownerProbe.RetainerName) ? string.Empty : $"（{_ownerProbe.RetainerName}）"));
+
+            if (!string.IsNullOrEmpty(_ownerProbe.OwnerName))
+                ImGui.TextColored(ColorFavorite, $"→ 持ち主: {_ownerProbe.OwnerName}");
+            else
+                ImGui.TextColored(ColorMuted, "→ どの方法でも持ち主に到達できませんでした。");
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (ImGui.BeginTable("##owner_probe", 3, flags))
+            {
+                ImGui.TableSetupColumn("試した方法", ImGuiTableColumnFlags.WidthFixed, 170);
+                ImGui.TableSetupColumn("結果", ImGuiTableColumnFlags.WidthFixed, 60);
+                ImGui.TableSetupColumn("内容", ImGuiTableColumnFlags.WidthStretch, 2f);
+                ImGui.TableHeadersRow();
+
+                foreach (var attempt in _ownerProbe.Attempts)
+                {
+                    ImGui.TableNextRow();
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text(attempt.Method);
+
+                    ImGui.TableNextColumn();
+                    if (attempt.Success) ImGui.TextColored(ColorFavorite, "到達");
+                    else ImGui.TextColored(ColorMuted, "不可");
+
+                    ImGui.TableNextColumn();
+                    ImGui.TextWrapped(attempt.Result);
+                }
+
+                ImGui.EndTable();
+            }
+
+            if (_ownerProbe.ContentIdCandidates.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted, "名刺で確認できる候補:");
+
+                foreach (var candidate in _ownerProbe.ContentIdCandidates.Take(6))
+                {
+                    ImGui.Bullet();
+                    ImGui.SameLine();
+                    ImGui.Text($"0x{candidate:X}");
+                    ImGui.SameLine();
+
+                    var busy = Plugin.CharaCard.IsBusy;
+                    if (busy) ImGui.BeginDisabled();
+                    if (ImGui.SmallButton($"名刺##cand_{candidate:X}"))
+                        Plugin.CharaCard.Request(candidate);
+                    if (busy) ImGui.EndDisabled();
+                }
+
+                if (!string.IsNullOrEmpty(Plugin.CharaCard.LastResult))
+                    ImGui.TextColored(ColorAccent, $"名刺照会: {Plugin.CharaCard.LastResult}");
+            }
+
+            ImGui.Spacing();
+            if (ImGui.SmallButton("結果を閉じる")) _ownerProbe = null;
         }
 
         private void DrawProbePacketTable()

@@ -106,6 +106,59 @@ namespace MarketStats.Game
             }
         }
 
+        /// <summary>
+        /// 指定した値がメモリ上にある場所を探し、その周辺にキャラクター識別子らしき値が
+        /// 置かれていないかを調べる。ゲームが内部で対応を持っていれば隣接している可能性がある。
+        /// </summary>
+        public static List<ulong> FindContentIdsNear(ulong needle, int radius)
+        {
+            var found = new List<ulong>();
+            if (needle == 0) return found;
+
+            try
+            {
+                var module = InfoModule.Instance();
+                if (module == null) return found;
+
+                var proxy = (byte*)module->GetInfoProxyById(InfoProxyId.ItemSearch);
+                if (proxy == null) return found;
+
+                const int size = 0x5B98;
+
+                for (var offset = 0; offset + 8 <= size; offset += 4)
+                {
+                    if (*(ulong*)(proxy + offset) != needle) continue;
+
+                    var from = Math.Max(0, offset - radius);
+                    var to = Math.Min(size - 8, offset + radius);
+
+                    for (var near = from; near <= to; near += 4)
+                    {
+                        var value = *(ulong*)(proxy + near);
+                        if (!LooksLikeContentId(value)) continue;
+                        if (!found.Contains(value)) found.Add(value);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.PluginLog.Warning($"周辺メモリの走査に失敗しました: {e.Message}");
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// キャラクター識別子は 0x0040_0000_XXXX_XXXX の形をしている。
+        /// リテイナー識別子（0x0078_...）と区別するためにこの形だけを拾う。
+        /// </summary>
+        public static bool LooksLikeContentId(ulong value)
+        {
+            if (value == 0) return false;
+            var high = value >> 48;
+            return high is 0x0040 or 0x0041 or 0x0042;
+        }
+
         /// <summary>指定した出品の生バイトを 16 進でダンプする。</summary>
         public static string DumpListingBytes(int index)
         {
