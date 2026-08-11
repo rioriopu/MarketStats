@@ -50,6 +50,8 @@ namespace MarketStats.UI
             ImGui.Spacing();
             DrawSelfSection();
             ImGui.Spacing();
+            DrawMemoryScanSection();
+            ImGui.Spacing();
 
             if (_probeGameListings.Count == 0 && _probePacketListings.Count == 0)
                 return;
@@ -161,6 +163,138 @@ namespace MarketStats.UI
                 else
                     ImGui.TextColored(ColorFavorite,
                         "→ 自分の出品にはオーナーIDが入っています。他人の分も取れる可能性があります。");
+            }
+        }
+
+        private string _scanInput = string.Empty;
+        private List<ScanHit> _scanHits = new();
+        private string _scanSummary = string.Empty;
+        private int _dumpIndex;
+        private string _dumpText = string.Empty;
+
+        /// <summary>
+        /// メモリを直接走査して、識別子が本当に届いていないのかを確かめる。
+        /// 構造体の読み取り位置がずれているだけ、という可能性を潰すための機能。
+        /// </summary>
+        private void DrawMemoryScanSection()
+        {
+            if (!ImGui.CollapsingHeader("メモリを直接調べる###probe_scan")) return;
+
+            ImGui.TextWrapped(
+                "出品データのメモリを総当たりで走査します。自分の出品を検索した状態で" +
+                "「自分の ContentId を探す」を押すと、識別子がメモリ上に実在するかが分かります。\n" +
+                "見つかれば読み取り位置がずれているだけなので、そこから読めば特定できます。" +
+                "見つからなければ、サーバーが送っていないと確定します。");
+
+            ImGui.Spacing();
+
+            if (ImGui.Button("自分の ContentId を探す"))
+            {
+                var self = SelfRetainerProbe.Read();
+                if (self.ContentId == 0)
+                    _scanSummary = "自分の ContentId を取得できませんでした。";
+                else
+                    RunScan(self.ContentId, $"自分の ContentId (0x{self.ContentId:X})");
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("自分のリテイナー ID を探す"))
+            {
+                var self = SelfRetainerProbe.Read();
+                var retainer = self.Retainers.FirstOrDefault(r => r.SellingItems) ?? self.Retainers.FirstOrDefault();
+                if (retainer == null)
+                    _scanSummary = "リテイナーを取得できませんでした。";
+                else
+                    RunScan(retainer.RetainerId, $"リテイナー {retainer.Name} (0x{retainer.RetainerId:X})");
+            }
+
+            ImGui.Spacing();
+            ImGui.SetNextItemWidth(240);
+            var input = _scanInput;
+            if (ImGui.InputTextWithHint("##scan_input", "任意の数値（10進 / 0x 付き16進）", ref input, 32))
+                _scanInput = input;
+
+            ImGui.SameLine();
+            if (ImGui.Button("この値を探す"))
+            {
+                var text = _scanInput.Trim();
+                ulong needle = 0;
+                var ok = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? ulong.TryParse(text[2..], System.Globalization.NumberStyles.HexNumber, null, out needle)
+                    : ulong.TryParse(text, out needle);
+
+                if (ok && needle != 0) RunScan(needle, $"0x{needle:X}");
+                else _scanSummary = "数値として解釈できませんでした。";
+            }
+
+            if (!string.IsNullOrEmpty(_scanSummary))
+            {
+                ImGui.Spacing();
+                ImGui.TextWrapped(_scanSummary);
+            }
+
+            if (_scanHits.Count > 0)
+            {
+                ImGui.Spacing();
+                foreach (var hit in _scanHits.Take(30))
+                    ImGui.BulletText(hit.ToString());
+
+                if (_scanHits.Count > 30)
+                    ImGui.TextColored(ColorMuted, $"…ほか {_scanHits.Count - 30} 件");
+            }
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.TextColored(ColorMuted, "出品 1 件分の生データを見る");
+
+            ImGui.SetNextItemWidth(120);
+            ImGui.InputInt("出品の番号##dumpidx", ref _dumpIndex);
+
+            ImGui.SameLine();
+            if (ImGui.Button("生データを表示"))
+            {
+                _dumpText = MemoryScanner.DumpListingBytes(_dumpIndex);
+                var fields = MemoryScanner.DescribeNonZeroFields(_dumpIndex);
+                if (!string.IsNullOrEmpty(fields))
+                    _dumpText += "\n0 でない 8 バイト値:\n" + fields;
+                Plugin.PluginLog.Information($"出品 #{_dumpIndex} の生データ:\n{_dumpText}");
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("生データをコピー") && !string.IsNullOrEmpty(_dumpText))
+                ImGui.SetClipboardText(_dumpText);
+
+            if (!string.IsNullOrEmpty(_dumpText))
+            {
+                ImGui.Spacing();
+                if (ImGui.BeginChild("##dump_view", new System.Numerics.Vector2(0, 200), true))
+                    ImGui.TextUnformatted(_dumpText);
+                ImGui.EndChild();
+            }
+        }
+
+        private void RunScan(ulong needle, string label)
+        {
+            _scanHits = MemoryScanner.ScanForValue(needle);
+
+            if (_scanHits.Count == 0)
+            {
+                _scanSummary =
+                    $"{label} はマーケット関連のメモリに存在しませんでした。\n" +
+                    "→ この値はサーバーから送られてきていません。";
+                return;
+            }
+
+            var inListing = _scanHits.Where(h => h.ListingIndex >= 0).ToList();
+            _scanSummary = $"{label} を {_scanHits.Count} 箇所で発見しました。";
+
+            if (inListing.Count > 0)
+            {
+                var offsets = inListing.Select(h => h.OffsetInListing).Distinct().OrderBy(o => o);
+                _scanSummary +=
+                    $"\n→ うち {inListing.Count} 件は出品データの中です（オフセット " +
+                    string.Join(", ", offsets.Select(o => $"+0x{o:X2}")) + "）。" +
+                    "\n→ ここから読めば取得できます。オフセットを教えてください。";
             }
         }
 
