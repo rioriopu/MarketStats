@@ -72,6 +72,10 @@ namespace MarketStats.Game
         {
             if (start == null) return;
 
+            // 読める範囲だけを走査する。範囲外を読むとゲームごと落ちる。
+            size = SafeMemory.GetReadableSize((nint)start, size);
+            if (size < 16) return;
+
             // 出品配列の先頭（InfoProxyItemSearch._listings は 0x30 から）
             const int listingsOffset = 0x30;
             const int listingsCount = 100;
@@ -123,7 +127,8 @@ namespace MarketStats.Game
                 var proxy = (byte*)module->GetInfoProxyById(InfoProxyId.ItemSearch);
                 if (proxy == null) return found;
 
-                const int size = 0x5B98;
+                var size = SafeMemory.GetReadableSize((nint)proxy, 0x5B98);
+                if (size < 16) return found;
 
                 for (var offset = 0; offset + 8 <= size; offset += 4)
                 {
@@ -174,6 +179,9 @@ namespace MarketStats.Game
                     return $"出品 #{index} は範囲外です（{proxy->ListingCount} 件）。";
 
                 var start = (byte*)proxy + 0x30 + ListingSize * index;
+                if (!SafeMemory.IsFullyReadable((nint)start, ListingSize))
+                    return "この出品のメモリを読み取れませんでした。";
+
                 var sb = new StringBuilder();
 
                 for (var row = 0; row < ListingSize; row += 16)
@@ -207,6 +215,8 @@ namespace MarketStats.Game
                 if (proxy == null || index < 0 || index >= (int)proxy->ListingCount) return string.Empty;
 
                 var start = (byte*)proxy + 0x30 + ListingSize * index;
+                if (!SafeMemory.IsFullyReadable((nint)start, ListingSize)) return string.Empty;
+
                 var parts = new List<string>();
 
                 for (var offset = 0; offset + 8 <= ListingSize; offset += 8)

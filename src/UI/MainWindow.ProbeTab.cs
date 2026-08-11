@@ -312,6 +312,18 @@ namespace MarketStats.UI
 
             ImGui.Spacing();
 
+            var followPointers = Plugin.Config.ScanPointerTargets;
+            if (ImGui.Checkbox("ポインタの先まで辿る（走査範囲を広げる）", ref followPointers))
+            {
+                Plugin.Config.ScanPointerTargets = followPointers;
+                Plugin.Config.Save();
+            }
+            AttachTooltip(
+                "リストの実体は別の場所に置かれていることがあるため、参照先まで辿ると見つかる数が増えます。\n" +
+                "読み取り可否は毎回 OS に確認してから読みますが、走査範囲が大きく広がるため既定では無効です。");
+
+            ImGui.Spacing();
+
             if (ImGui.Button("走査する"))
             {
                 var regions = IdentityPairScanner.EnumerateRegions();

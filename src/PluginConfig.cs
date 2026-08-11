@@ -92,6 +92,12 @@ namespace MarketStats
         /// <summary>マーケット関連のフック地点で、届いた生データを取り込んで解析する（診断用）。</summary>
         public bool EnablePacketCapture { get; set; } = false;
 
+        /// <summary>
+        /// 識別子の走査で、ポインタの先まで辿るか。
+        /// 読み取り可否は毎回 OS へ確認するが、走査範囲が大きく広がるため既定では無効。
+        /// </summary>
+        public bool ScanPointerTargets { get; set; } = false;
+
         /// <summary>推定した名前が実在するかを Lodestone で確認する（外部通信）。</summary>
         public bool VerifyNamesOnLodestone { get; set; } = false;
 

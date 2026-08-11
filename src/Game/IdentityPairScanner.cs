@@ -44,6 +44,12 @@ namespace MarketStats.Game
         /// <summary>1 回の走査で拾う上限。</summary>
         private const int MaxPairs = 400;
 
+        /// <summary>ポインタを辿る先で読む最大サイズ。</summary>
+        private const int PointerTargetSize = 0x2000;
+
+        /// <summary>1 領域あたりに辿るポインタの上限。</summary>
+        private const int MaxPointerFollows = 96;
+
         /// <summary>走査できる領域を列挙する。</summary>
         public static List<ScanRegion> EnumerateRegions()
         {
@@ -89,7 +95,12 @@ namespace MarketStats.Game
         private static void Add(List<ScanRegion> regions, string name, nint address, int size)
         {
             if (address == nint.Zero) return;
-            regions.Add(new ScanRegion { Name = name, Address = address, Size = size });
+
+            // 実際に読める分だけを対象にする（構造体定義より領域が短いこともある）。
+            var readable = SafeMemory.GetReadableSize(address, size);
+            if (readable < 16) return;
+
+            regions.Add(new ScanRegion { Name = name, Address = address, Size = readable });
         }
 
         /// <summary>
@@ -121,42 +132,44 @@ namespace MarketStats.Game
             return pairs;
         }
 
-        /// <summary>領域内のポインタを 1 段だけ辿って、その先も走査する。</summary>
+        /// <summary>
+        /// 領域内のポインタを 1 段だけ辿って、その先も走査する。
+        ///
+        /// 辿る前に必ず OS へ読み取り可否を問い合わせる。
+        /// 無効なアドレスを読むとアクセス違反でゲームごと落ちるため、ここは省略できない。
+        /// </summary>
         private static void ScanPointerTargets(
             ScanRegion region, List<IdentityPair> pairs, HashSet<ulong> seen)
         {
+            if (!Plugin.Config.ScanPointerTargets) return;
+
             var start = (byte*)region.Address;
+            var followed = 0;
 
             for (var offset = 0; offset + 8 <= region.Size; offset += 8)
             {
-                if (pairs.Count >= MaxPairs) return;
+                if (pairs.Count >= MaxPairs || followed >= MaxPointerFollows) return;
 
                 var pointer = *(nint*)(start + offset);
-                if (!LooksLikeHeapPointer(pointer)) continue;
+                if (pointer == nint.Zero || ((ulong)pointer & 0x7) != 0) continue;
 
-                try
-                {
-                    // リストの実体は大きいことがあるので、少し広めに見る。
-                    ScanRegion($"{region.Name} の参照先", (byte*)pointer, 0x2000, pairs, seen);
-                }
-                catch
-                {
-                    // 読めないポインタは飛ばす。
-                }
+                // 読める分だけを、読める長さで走査する。
+                var readable = SafeMemory.GetReadableSize(pointer, PointerTargetSize);
+                if (readable < 64) continue;
+
+                followed++;
+                ScanRegion($"{region.Name} の参照先", (byte*)pointer, readable, pairs, seen);
             }
-        }
-
-        /// <summary>ヒープ上のアドレスらしいか（雑だが、明らかに不正な値を弾く）。</summary>
-        private static bool LooksLikeHeapPointer(nint pointer)
-        {
-            var value = (ulong)pointer;
-            return value > 0x10000 && value < 0x7FFF_FFFF_FFFF && (value & 0x7) == 0;
         }
 
         private static void ScanRegion(
             string label, byte* start, int size, List<IdentityPair> pairs, HashSet<ulong> seen)
         {
-            if (start == null) return;
+            if (start == null || size < 16) return;
+
+            // 呼び出し元で確認済みでも、ここでもう一度だけ念を入れる。
+            size = SafeMemory.GetReadableSize((nint)start, size);
+            if (size < 16) return;
 
             for (var offset = 0; offset + 8 <= size; offset += 4)
             {
