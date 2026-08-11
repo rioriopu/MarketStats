@@ -38,6 +38,18 @@ namespace MarketStats.Data
         /// <summary>観測した出品のアイテム（重複なし）。</summary>
         public List<uint> ObservedItems { get; set; } = new();
 
+        /// <summary>チャットでこのリテイナー名に言及した発言。</summary>
+        public List<ChatMention> ChatMentions { get; set; } = new();
+
+        /// <summary>持ち主を割り出すために集めた手がかり。</summary>
+        public List<OwnerEvidence> Evidence { get; set; } = new();
+
+        /// <summary>結論の確度（0〜100）。</summary>
+        public int Confidence { get; set; }
+
+        /// <summary>結論を出せなかった理由。</summary>
+        public string? InconclusiveReason { get; set; }
+
         [JsonIgnore]
         public bool HasOwner => !string.IsNullOrEmpty(OwnerName);
 
@@ -50,6 +62,14 @@ namespace MarketStats.Data
             !string.IsNullOrEmpty(OwnerName) ? OwnerName
             : !string.IsNullOrEmpty(GuessedOwnerName) ? $"{GuessedOwnerName}（推定）"
             : "不明";
+    }
+
+    /// <summary>チャットでリテイナー名に言及した発言。</summary>
+    public sealed class ChatMention
+    {
+        public string SpeakerName { get; set; } = string.Empty;
+        public string Channel { get; set; } = string.Empty;
+        public long Unix { get; set; }
     }
 
     /// <summary>
@@ -186,6 +206,91 @@ namespace MarketStats.Data
                 profile.GuessScore = 0;
                 profile.GuessReasons = new List<string> { $"推定を取り下げました（{reason}）" };
                 _dirty = true;
+            }
+        }
+
+        /// <summary>チャットでの言及を記録する。</summary>
+        public bool AddChatMention(ulong retainerId, string speakerName, string channel)
+        {
+            if (retainerId == 0 || string.IsNullOrWhiteSpace(speakerName)) return false;
+
+            lock (_lock)
+            {
+                if (!_byId.TryGetValue(retainerId, out var profile)) return false;
+
+                profile.ChatMentions.Add(new ChatMention
+                {
+                    SpeakerName = speakerName,
+                    Channel = channel,
+                    Unix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                });
+
+                if (profile.ChatMentions.Count > 20)
+                    profile.ChatMentions.RemoveRange(0, profile.ChatMentions.Count - 20);
+
+                _dirty = true;
+                return true;
+            }
+        }
+
+        /// <summary>すべてのリテイナー名を返す（チャット監視の照合用）。</summary>
+        public List<(ulong Id, string Name)> AllNames()
+        {
+            lock (_lock)
+                return _byId.Values
+                    .Where(p => !string.IsNullOrWhiteSpace(p.RetainerName))
+                    .Select(p => (p.RetainerId, p.RetainerName))
+                    .ToList();
+        }
+
+        /// <summary>手がかりを突き合わせた結論を書き込む。変化があれば true。</summary>
+        public bool ApplyConclusion(ulong retainerId, OwnerConclusion conclusion, List<OwnerEvidence> evidence)
+        {
+            lock (_lock)
+            {
+                if (!_byId.TryGetValue(retainerId, out var profile)) return false;
+
+                profile.Evidence = evidence;
+                profile.Confidence = conclusion.Confidence;
+                profile.InconclusiveReason = conclusion.Inconclusive;
+
+                var changed = false;
+
+                if (conclusion.IsCertain && !string.IsNullOrEmpty(conclusion.OwnerName))
+                {
+                    if (!string.Equals(profile.OwnerName, conclusion.OwnerName, StringComparison.Ordinal))
+                    {
+                        profile.OwnerName = conclusion.OwnerName;
+                        changed = true;
+                    }
+                    profile.GuessedOwnerName = null;
+                    profile.GuessScore = 0;
+                }
+                else if (!string.IsNullOrEmpty(conclusion.OwnerName))
+                {
+                    if (!string.Equals(profile.GuessedOwnerName, conclusion.OwnerName, StringComparison.Ordinal))
+                        changed = true;
+
+                    profile.GuessedOwnerName = conclusion.OwnerName;
+                    profile.GuessScore = conclusion.Confidence;
+                }
+                else if (!profile.HasOwner && !string.IsNullOrEmpty(profile.GuessedOwnerName))
+                {
+                    // 結論が出せなくなったら取り下げる。
+                    profile.GuessedOwnerName = null;
+                    profile.GuessScore = 0;
+                    changed = true;
+                }
+
+                profile.GuessReasons = conclusion.Supporting
+                    .Select(e => $"[{e.KindLabel}] {e.Description}")
+                    .ToList();
+
+                if (conclusion.Inconclusive != null && string.IsNullOrEmpty(conclusion.OwnerName))
+                    profile.GuessReasons.Add($"結論を出せません: {conclusion.Inconclusive}");
+
+                _dirty = true;
+                return changed;
             }
         }
 

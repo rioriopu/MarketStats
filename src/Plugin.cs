@@ -48,6 +48,7 @@ namespace MarketStats
         internal static readonly MarketHistoryStore Purchases = new();
         internal static readonly RetainerRegistry Retainers = new();
         internal static readonly UniversalisClient Universalis = new();
+        internal static readonly LodestoneVerifier NameVerifier = new();
 
         internal static RetainerHistoryCapture Capture { get; private set; } = null!;
         internal static IdentityCollector IdentityCollector { get; private set; } = null!;
@@ -56,6 +57,7 @@ namespace MarketStats
         internal static SaleHistoryAutoOpen AutoOpen { get; private set; } = null!;
         internal static CharaCardLookup CharaCard { get; private set; } = null!;
         internal static MarketContextMenu SellerMenu { get; private set; } = null!;
+        internal static ChatRetainerWatcher ChatWatcher { get; private set; } = null!;
 
         private static MainWindow? _mainWindow;
         private static SellerOverlayWindow? _sellerOverlay;
@@ -114,6 +116,9 @@ namespace MarketStats
 
             SellerMenu = new MarketContextMenu();
             SellerMenu.Attach();
+
+            ChatWatcher = new ChatRetainerWatcher();
+            ChatWatcher.Initialize();
 
             _windowSystem = new WindowSystem("MarketStats");
             _mainWindow = new MainWindow { IsOpen = Config.AutoOpenOnLoad };
@@ -284,8 +289,8 @@ namespace MarketStats
 
             try
             {
-                var updated = RetainerOwnerGuesser.Update(
-                    Listings, Purchases, Store, Retainers, Config.ResaleWindowHours);
+                var updated = OwnerResolver.Update(
+                    Listings, Purchases, Store, Retainers, Identities, Config.ResaleWindowHours);
 
                 if (updated > 0)
                 {
@@ -446,12 +451,14 @@ namespace MarketStats
             Store.SalesAdded -= OnSalesAdded;
             Capture.HistoryWindowOpened -= OnHistoryWindowOpened;
 
+            ChatWatcher.Dispose();
             SellerMenu.Dispose();
             AutoOpen.Dispose();
             SellListWatcher.Dispose();
             MarketWatcher.Dispose();
             Capture.Dispose();
             Universalis.Dispose();
+            NameVerifier.Dispose();
 
             Store.Save(force: true);
             Favorites.Save();

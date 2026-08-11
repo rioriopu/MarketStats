@@ -86,6 +86,12 @@ namespace MarketStats
         /// <summary>購入履歴と出品タイミングから、リテイナーの持ち主を推定する。</summary>
         public bool EnableOwnerInference { get; set; } = true;
 
+        /// <summary>チャットでリテイナー名に言及した発言を手がかりに使う。</summary>
+        public bool EnableChatRetainerWatch { get; set; } = false;
+
+        /// <summary>推定した名前が実在するかを Lodestone で確認する（外部通信）。</summary>
+        public bool VerifyNamesOnLodestone { get; set; } = false;
+
         /// <summary>観測した出品の保持日数。</summary>
         public int ListingRetentionDays { get; set; } = 14;
 

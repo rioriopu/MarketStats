@@ -200,6 +200,28 @@ namespace MarketStats.UI
                     "出品者タブの「名刺」ボタンで調べたとき、読み取り後に名刺のウィンドウを閉じます。\n" +
                     "この照会はボタンを押した 1 件だけに対して行われ、まとめて自動照会することはありません。");
 
+                var chatWatch = config.EnableChatRetainerWatch;
+                if (ImGui.Checkbox("チャットでのリテイナー名の言及を手がかりにする", ref chatWatch))
+                {
+                    config.EnableChatRetainerWatch = chatWatch;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "「○○（リテイナー名）に出しています」といった発言があった場合、その発言者を候補として記録します。\n" +
+                    "判定に使うのは観測済みのリテイナー名が含まれるかどうかだけで、発言内容は保存しません。\n" +
+                    $"検出数: {Plugin.ChatWatcher.MentionCount} / 直近: {Plugin.ChatWatcher.LastMention}");
+
+                var verify = config.VerifyNamesOnLodestone;
+                if (ImGui.Checkbox("推定した名前を Lodestone で裏取りする", ref verify))
+                {
+                    config.VerifyNamesOnLodestone = verify;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "推定した名前のキャラクターが自分のデータセンターに実在するかを確認します。\n" +
+                    "実在しなければ推定が誤っていると分かります。外部サイトへの通信が発生し、" +
+                    "リテイナータブのボタンを押したときだけ照会します。");
+
                 var inference = config.EnableOwnerInference;
                 if (ImGui.Checkbox("購入履歴からリテイナーの持ち主を推定する", ref inference))
                 {

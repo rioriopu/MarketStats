@@ -16,13 +16,24 @@ namespace MarketStats.Game
     /// </summary>
     public sealed unsafe class IdentityCollector
     {
+        // ゲームが保持している「名前と ContentId が両方分かっているリスト」を片端から読む。
+        // どれか 1 つにでも載っていれば、その相手の名前を出せるようになる。
         private static readonly (InfoProxyId Id, IdentitySource Source)[] Proxies =
         {
             (InfoProxyId.PartyMember, IdentitySource.Party),
+            (InfoProxyId.CrossRealmParty, IdentitySource.Party),
+            (InfoProxyId.PartyInvite, IdentitySource.Party),
             (InfoProxyId.FriendList, IdentitySource.Friend),
             (InfoProxyId.FreeCompanyMember, IdentitySource.FreeCompany),
+            (InfoProxyId.FreeCompanyInvite, IdentitySource.FreeCompany),
             (InfoProxyId.LinkshellMember, IdentitySource.Linkshell),
             (InfoProxyId.CrossWorldLinkshellMember, IdentitySource.Linkshell),
+            (InfoProxyId.ContentMember, IdentitySource.Party),
+            (InfoProxyId.NoviceNetworkMember, IdentitySource.Linkshell),
+            (InfoProxyId.Blacklist, IdentitySource.ObjectTable),
+            (InfoProxyId.Letter, IdentitySource.Friend),
+            (InfoProxyId.CircleList, IdentitySource.Linkshell),
+            (InfoProxyId.Circle, IdentitySource.Linkshell),
         };
 
         private DateTime _nextObjectScanUtc = DateTime.MinValue;
@@ -83,6 +94,46 @@ namespace MarketStats.Game
             {
                 Plugin.PluginLog.Warning($"周囲のプレイヤーの読み取りに失敗しました: {e.Message}");
             }
+        }
+
+        /// <summary>
+        /// ContentId を指定して、ゲームが持っている各リストから直接その人物を引く。
+        /// リストに載っている相手なら、対応表を待たずにその場で名前が分かる。
+        /// </summary>
+        public static bool TryLookupByContentId(ulong contentId, out string name, out ushort worldId)
+        {
+            name = string.Empty;
+            worldId = 0;
+            if (contentId == 0) return false;
+
+            try
+            {
+                var module = InfoModule.Instance();
+                if (module == null) return false;
+
+                foreach (var (id, source) in Proxies)
+                {
+                    var proxy = (InfoProxyCommonList*)module->GetInfoProxyById(id);
+                    if (proxy == null) continue;
+
+                    var entry = proxy->GetEntryByContentId(contentId);
+                    if (entry == null) continue;
+
+                    var found = entry->NameString;
+                    if (string.IsNullOrWhiteSpace(found)) continue;
+
+                    name = found;
+                    worldId = entry->HomeWorld;
+                    Plugin.Identities.Record(contentId, name, worldId, source);
+                    return true;
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.PluginLog.Debug($"識別子からの照会に失敗しました: {e.Message}");
+            }
+
+            return false;
         }
 
         private void TryScanInfoProxies()

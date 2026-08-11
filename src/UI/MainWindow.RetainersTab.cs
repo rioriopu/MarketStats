@@ -35,9 +35,9 @@ namespace MarketStats.UI
             ImGui.SameLine();
             if (ImGui.Button("いま推定し直す"))
             {
-                var updated = RetainerOwnerGuesser.Update(
+                var updated = OwnerResolver.Update(
                     Plugin.Listings, Plugin.Purchases, Plugin.Store,
-                    Plugin.Retainers, Plugin.Config.ResaleWindowHours);
+                    Plugin.Retainers, Plugin.Identities, Plugin.Config.ResaleWindowHours);
                 Plugin.Retainers.Save(force: true);
                 Plugin.ChatGui.Print($"[Market Stats] リテイナー {updated} 件の持ち主を推定しました。");
             }
@@ -188,12 +188,82 @@ namespace MarketStats.UI
                 AttachTooltip("この出品者の冒険者名刺を開いて、名前を確定させます。");
             }
 
-            if (profile.GuessReasons.Count > 0)
+            if (profile.Confidence > 0 && !profile.IsMine)
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(ColorMuted, $"（確度 {profile.Confidence}）");
+            }
+
+            // 集めた手がかりを種類ごとに並べる。
+            if (profile.Evidence.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted, "集まった手がかり:");
+
+                const ImGuiTableFlags evidenceFlags =
+                    ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+                if (ImGui.BeginTable("##evidence", 3, evidenceFlags))
+                {
+                    ImGui.TableSetupColumn("手法", ImGuiTableColumnFlags.WidthFixed, 150);
+                    ImGui.TableSetupColumn("指している人", ImGuiTableColumnFlags.WidthStretch, 1f);
+                    ImGui.TableSetupColumn("内容", ImGuiTableColumnFlags.WidthStretch, 2f);
+                    ImGui.TableHeadersRow();
+
+                    foreach (var e in profile.Evidence.OrderByDescending(e => e.Weight))
+                    {
+                        ImGui.TableNextRow();
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextColored(e.IsDecisive ? ColorFavorite : ColorMuted, e.KindLabel);
+                        AttachTooltip(e.IsDecisive ? "これ 1 つで確定できる手がかりです。" : $"重み {e.Weight}");
+
+                        ImGui.TableNextColumn();
+                        ImGui.Text(e.OwnerName);
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextWrapped(e.Description);
+                    }
+
+                    ImGui.EndTable();
+                }
+            }
+            else if (profile.GuessReasons.Count > 0)
             {
                 ImGui.Spacing();
                 ImGui.TextColored(ColorMuted, profile.ManuallySet ? "設定:" : "推定の根拠:");
                 foreach (var reason in profile.GuessReasons)
                     ImGui.BulletText(reason);
+            }
+
+            if (!string.IsNullOrEmpty(profile.InconclusiveReason))
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorAccent, $"結論を出していません: {profile.InconclusiveReason}");
+            }
+
+            // 推定した名前が実在するかを Lodestone で裏取りする。
+            var candidate = profile.OwnerName ?? profile.GuessedOwnerName;
+            if (Plugin.Config.VerifyNamesOnLodestone && !string.IsNullOrEmpty(candidate) && !profile.IsMine)
+            {
+                ImGui.Spacing();
+                var verification = Plugin.NameVerifier.GetCached(candidate);
+
+                if (verification == null)
+                {
+                    if (ImGui.SmallButton($"Lodestone で実在を確認##verify_{profile.RetainerId}"))
+                        _ = Plugin.NameVerifier.VerifyAsync(candidate);
+                    AttachTooltip("この名前のキャラクターが自分のデータセンターに実在するかを調べます。");
+                }
+                else if (verification.Error != null)
+                    ImGui.TextColored(ColorMuted, $"Lodestone 照合: 失敗（{verification.Error}）");
+                else if (verification.Exists)
+                    ImGui.TextColored(ColorFavorite,
+                        $"Lodestone 照合: 実在を確認（{verification.HitCount} 件" +
+                        (string.IsNullOrEmpty(verification.WorldName) ? "" : $" / {verification.WorldName}") + "）");
+                else
+                    ImGui.TextColored(ColorAccent,
+                        "Lodestone 照合: このデータセンターに該当なし（推定が誤っている可能性）");
             }
 
             // 推定が外れている場合に、正しい持ち主を手で入れて上書きできるようにする。
