@@ -50,6 +50,24 @@ namespace MarketStats.UI
             {
                 _marketSnapshot = _marketTask.Result;
                 _marketTask = null;
+
+                // 手動で取得した分も、購入者の分析材料として取り込む。
+                if (_marketSnapshot.Error == null)
+                {
+                    var purchases = UniversalisClient.ToPurchases(_marketSnapshot);
+                    if (purchases.Count > 0)
+                    {
+                        Plugin.Purchases.Add(purchases);
+                        Plugin.Purchases.Save();
+                    }
+
+                    var records = UniversalisClient.ToListingRecords(_marketSnapshot);
+                    if (records.Count > 0)
+                    {
+                        Plugin.Listings.Observe(records);
+                        foreach (var record in records) Plugin.Retainers.Observe(record);
+                    }
+                }
             }
 
             if (_marketTask is { IsFaulted: true })

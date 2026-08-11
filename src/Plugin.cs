@@ -348,10 +348,21 @@ namespace MarketStats
                 if (snapshot.Error != null) return;
 
                 var records = UniversalisClient.ToListingRecords(snapshot);
-                if (records.Count == 0) return;
+                if (records.Count > 0)
+                {
+                    Listings.Observe(records);
+                    foreach (var record in records) Retainers.Observe(record);
+                    Listings.Save();
+                }
 
-                Listings.Observe(records);
-                Listings.Save();
+                // 購入履歴も取り込む。買い手の名前は公開されているので、
+                // 「誰が大量に買っているか」の材料になる。
+                var purchases = UniversalisClient.ToPurchases(snapshot);
+                if (purchases.Count > 0)
+                {
+                    Purchases.Add(purchases);
+                    Purchases.Save();
+                }
             }
             catch (Exception e)
             {
@@ -399,6 +410,11 @@ namespace MarketStats
                     break;
                 case "sellers":
                     _mainWindow.RequestTab(MainWindow.Tab.Sellers);
+                    _mainWindow.IsOpen = true;
+                    break;
+                case "market":
+                case "buyers2":
+                    _mainWindow.RequestTab(MainWindow.Tab.MarketBuyers);
                     _mainWindow.IsOpen = true;
                     break;
                 case "retainers":

@@ -94,6 +94,12 @@ namespace MarketStats.Data
             return added;
         }
 
+        /// <summary>購入履歴を持っているアイテム ID の一覧。</summary>
+        public List<uint> ItemIds()
+        {
+            lock (_lock) return _byItem.Keys.ToList();
+        }
+
         public List<MarketPurchase> ForItem(uint itemId)
         {
             lock (_lock)

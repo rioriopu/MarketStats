@@ -221,6 +221,31 @@ namespace MarketStats.Game
             return result;
         }
 
+        /// <summary>取得した購入履歴を、購入者分析用のレコードへ変換する。</summary>
+        public static List<Data.MarketPurchase> ToPurchases(MarketSnapshot snapshot)
+        {
+            var result = new List<Data.MarketPurchase>(snapshot.History.Count);
+
+            foreach (var h in snapshot.History)
+            {
+                if (string.IsNullOrWhiteSpace(h.BuyerName) || h.UnixTime == 0) continue;
+
+                result.Add(new Data.MarketPurchase
+                {
+                    ItemId = snapshot.ItemId,
+                    Hq = h.Hq,
+                    BuyerName = h.BuyerName,
+                    Quantity = h.Quantity,
+                    UnitPrice = h.PricePerUnit,
+                    UnixTime = h.UnixTime,
+                    OnMannequin = h.OnMannequin,
+                    WorldName = h.WorldName,
+                });
+            }
+
+            return result;
+        }
+
         /// <summary>指定した購入者名に一致する履歴だけを抜き出す。</summary>
         public static List<MarketHistoryEntry> FilterByBuyer(MarketSnapshot snapshot, string buyerName) =>
             snapshot.History

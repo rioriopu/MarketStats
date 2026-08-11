@@ -21,6 +21,7 @@ namespace MarketStats.UI
             Buyers,
             History,
             Sellers,
+            MarketBuyers,
             Retainers,
             Market,
             Probe,
@@ -82,6 +83,7 @@ namespace MarketStats.UI
             DrawTab("購入者別", Tab.Buyers, DrawBuyersTab);
             DrawTab("取引履歴", Tab.History, DrawHistoryTab);
             DrawTab("出品者", Tab.Sellers, DrawSellersTab);
+            DrawTab("買い占め", Tab.MarketBuyers, DrawMarketBuyersTab);
             DrawTab("リテイナー", Tab.Retainers, DrawRetainersTab);
             DrawTab("相場", Tab.Market, DrawMarketTab);
             DrawTab("検証", Tab.Probe, DrawProbeTab);
