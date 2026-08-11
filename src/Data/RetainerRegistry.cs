@@ -41,6 +41,29 @@ namespace MarketStats.Data
         /// <summary>チャットでこのリテイナー名に言及した発言。</summary>
         public List<ChatMention> ChatMentions { get; set; } = new();
 
+        /// <summary>観測した出品の製作者署名（ContentId → 件数）。</summary>
+        public Dictionary<ulong, int> ArtisanCounts { get; set; } = new();
+
+        /// <summary>最も多く署名されている製作者の ContentId。</summary>
+        [JsonIgnore]
+        public ulong MainArtisanId =>
+            ArtisanCounts.Count == 0 ? 0 : ArtisanCounts.OrderByDescending(kv => kv.Value).First().Key;
+
+        /// <summary>署名付き出品のうち、主な製作者が占める割合。</summary>
+        [JsonIgnore]
+        public double MainArtisanRatio
+        {
+            get
+            {
+                var total = ArtisanCounts.Values.Sum();
+                if (total == 0) return 0;
+                return (double)ArtisanCounts.Values.Max() / total;
+            }
+        }
+
+        [JsonIgnore]
+        public int SignedListingCount => ArtisanCounts.Values.Sum();
+
         /// <summary>持ち主を割り出すために集めた手がかり。</summary>
         public List<OwnerEvidence> Evidence { get; set; } = new();
 
@@ -144,6 +167,14 @@ namespace MarketStats.Data
                 if (!profile.ObservedItems.Contains(listing.ItemId))
                     profile.ObservedItems.Add(listing.ItemId);
 
+                // 製作者署名を数える。同じ製作者に偏るほど「自作品を売っている＝持ち主＝製作者」
+                // の可能性が高くなる。
+                if (listing.ArtisanContentId != 0)
+                {
+                    profile.ArtisanCounts.TryGetValue(listing.ArtisanContentId, out var count);
+                    profile.ArtisanCounts[listing.ArtisanContentId] = count + 1;
+                }
+
                 _dirty = true;
             }
         }
@@ -231,6 +262,41 @@ namespace MarketStats.Data
                 _dirty = true;
                 return true;
             }
+        }
+
+        /// <summary>
+        /// 同じ製作者の品を扱っているリテイナーを探す。
+        /// 自作品を複数のリテイナーで売っている場合、それらは同じ持ち主である可能性が高い。
+        /// </summary>
+        public List<RetainerProfile> WithSameArtisan(ulong artisanId, ulong excludeRetainerId = 0)
+        {
+            if (artisanId == 0) return new List<RetainerProfile>();
+
+            lock (_lock)
+                return _byId.Values
+                    .Where(p => p.RetainerId != excludeRetainerId && p.ArtisanCounts.ContainsKey(artisanId))
+                    .OrderByDescending(p => p.ArtisanCounts[artisanId])
+                    .ToList();
+        }
+
+        /// <summary>
+        /// リテイナー ID が近いものを探す。
+        /// 同じ人がまとめて作ったリテイナーは ID が連番に近くなることがあるため、
+        /// 同一の持ち主を推測する材料になり得る。
+        /// </summary>
+        public List<(RetainerProfile Profile, ulong Distance)> WithNearbyId(ulong retainerId, ulong maxDistance)
+        {
+            if (retainerId == 0) return new List<(RetainerProfile, ulong)>();
+
+            lock (_lock)
+                return _byId.Values
+                    .Where(p => p.RetainerId != retainerId)
+                    .Select(p => (Profile: p, Distance: p.RetainerId > retainerId
+                        ? p.RetainerId - retainerId
+                        : retainerId - p.RetainerId))
+                    .Where(x => x.Distance <= maxDistance)
+                    .OrderBy(x => x.Distance)
+                    .ToList();
         }
 
         /// <summary>すべてのリテイナー名を返す（チャット監視の照合用）。</summary>

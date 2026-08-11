@@ -161,6 +161,97 @@ namespace MarketStats.UI
             ImGui.EndTable();
         }
 
+        /// <summary>
+        /// 製作者署名からの手がかりを表示する。
+        ///
+        /// 出品者の識別子はサーバーから送られてこないが、製作者の識別子は届いている。
+        /// しかも製作者の識別子はキャラクターの識別子と同じものなので、
+        /// 冒険者名刺で名前まで辿れる。自作品を並べている出品者なら、これが持ち主に直結する。
+        /// </summary>
+        private void DrawArtisanSection(RetainerProfile profile)
+        {
+            if (profile.SignedListingCount == 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted,
+                    "製作者署名のある出品を観測していません（署名なしの品や、素材類だけの場合があります）。");
+                return;
+            }
+
+            var artisanId = profile.MainArtisanId;
+            var ratio = profile.MainArtisanRatio;
+            var identity = Plugin.Identities.Resolve(artisanId);
+
+            ImGui.Spacing();
+            ImGui.TextColored(ColorAccent, "製作者からの手がかり");
+
+            var ratioText = $"署名のある出品 {profile.SignedListingCount} 件のうち {ratio * 100:F0}% が同じ製作者";
+            ImGui.TextWrapped(ratioText);
+
+            ImGui.Text("主な製作者:");
+            ImGui.SameLine();
+
+            if (identity != null && identity.Source != IdentitySource.Inferred)
+            {
+                ImGui.TextColored(ColorLink, identity.Name);
+                if (ImGui.IsItemClicked()) LodestoneOpen(identity.Name);
+                AttachTooltip("クリックで Lodestone のキャラクター検索を開きます。");
+            }
+            else
+            {
+                ImGui.TextColored(ColorMuted, $"不明 (0x{artisanId:X})");
+
+                ImGui.SameLine();
+                var busy = Plugin.CharaCard.IsBusy;
+                if (busy) ImGui.BeginDisabled();
+                if (ImGui.SmallButton($"名刺で製作者を調べる##artisan_{profile.RetainerId}"))
+                    Plugin.CharaCard.Request(artisanId);
+                if (busy) ImGui.EndDisabled();
+                AttachTooltip(
+                    "製作者の識別子はキャラクターの識別子と同じものなので、冒険者名刺で名前が分かります。\n" +
+                    "自作品を並べている出品者なら、その製作者が持ち主である可能性が高くなります。");
+            }
+
+            if (ratio >= 0.8)
+                ImGui.TextColored(ColorFavorite,
+                    "→ 出品が特定の製作者に偏っています。自作品を売っている可能性が高いです。");
+            else
+                ImGui.TextColored(ColorMuted,
+                    "→ 複数の製作者の品が混ざっています。仕入れて売っている可能性があります。");
+
+            // 同じ製作者の品を扱っている他のリテイナー = 同じ持ち主かもしれない
+            var siblings = Plugin.Retainers.WithSameArtisan(artisanId, profile.RetainerId);
+            if (siblings.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorAccent, "同じ製作者の品を扱っているリテイナー");
+                ImGui.TextWrapped(
+                    "自作品を複数のリテイナーで売っている場合、これらは同じ持ち主の可能性があります。" +
+                    "どれか 1 つで持ち主が判明すれば、他にも当てはめられます。");
+
+                foreach (var sibling in siblings.Take(10))
+                {
+                    ImGui.Bullet();
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"{sibling.RetainerName}##sib_{sibling.RetainerId}"))
+                        _selectedRetainerId = sibling.RetainerId;
+                    ImGui.SameLine();
+                    ImGui.TextColored(ColorMuted,
+                        $"（この製作者の品 {sibling.ArtisanCounts[artisanId]} 件 / 持ち主 {sibling.DisplayOwner}）");
+                }
+            }
+
+            // ID が近いリテイナー（同じ人がまとめて作った可能性）
+            var nearby = Plugin.Retainers.WithNearbyId(profile.RetainerId, 32);
+            if (nearby.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted, "ID が近いリテイナー（同時に作られた可能性）:");
+                foreach (var (sibling, distance) in nearby.Take(5))
+                    ImGui.BulletText($"{sibling.RetainerName}（差 {distance}） 持ち主 {sibling.DisplayOwner}");
+            }
+        }
+
         private void DrawRetainerDetail()
         {
             if (_selectedRetainerId == 0)
@@ -302,6 +393,8 @@ namespace MarketStats.UI
                     AttachTooltip("この推定・設定を取り消して「不明」に戻します。");
                 }
             }
+
+            DrawArtisanSection(profile);
 
             ImGui.Spacing();
             ImGui.TextColored(ColorMuted, "取り扱っている商品:");

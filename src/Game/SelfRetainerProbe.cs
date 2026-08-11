@@ -1,3 +1,4 @@
+using System.Linq;
 using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace MarketStats.Game
@@ -72,6 +73,41 @@ namespace MarketStats.Game
             }
 
             return info;
+        }
+
+        /// <summary>
+        /// 自分のリテイナー同士の ID の関係を調べる。
+        ///
+        /// 同じ人がまとめて作ったリテイナーの ID が連番に近いなら、
+        /// 「ID が近いリテイナーは同じ持ち主」という推測が成り立つ可能性がある。
+        /// 逆にバラバラなら、その手は使えないと分かる。
+        /// </summary>
+        public static string DescribeRetainerIdSpacing(List<SelfRetainer> retainers)
+        {
+            if (retainers.Count < 2) return "リテイナーが 1 体のみのため比較できません。";
+
+            var sorted = retainers.OrderBy(r => r.RetainerId).ToList();
+            var lines = new List<string>();
+            var distances = new List<ulong>();
+
+            for (var i = 1; i < sorted.Count; i++)
+            {
+                var distance = sorted[i].RetainerId - sorted[i - 1].RetainerId;
+                distances.Add(distance);
+                lines.Add($"{sorted[i - 1].Name} → {sorted[i].Name}: 差 {distance:N0} (0x{distance:X})");
+            }
+
+            var max = distances.Max();
+            string verdict;
+
+            if (max <= 16)
+                verdict = "→ ID がほぼ連番です。近い ID のリテイナーは同じ持ち主の可能性が高いと考えられます。";
+            else if (max <= 100000)
+                verdict = "→ ID は近い範囲に固まっています。同じ持ち主の目安として使えるかもしれません。";
+            else
+                verdict = "→ ID はバラバラです。ID の近さから持ち主を推測することはできません。";
+
+            return string.Join("\n", lines) + "\n" + verdict;
         }
 
         /// <summary>

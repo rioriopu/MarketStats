@@ -144,6 +144,14 @@ namespace MarketStats.UI
 
             ImGui.EndTable();
 
+            // リテイナー ID 同士の間隔。連番に近ければ、ID の近さで同じ持ち主を推測できる。
+            if (self.Retainers.Count >= 2)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorAccent, "リテイナー ID 同士の間隔");
+                ImGui.TextUnformatted(SelfRetainerProbe.DescribeRetainerIdSpacing(self.Retainers));
+            }
+
             ImGui.Spacing();
             var found = self.Retainers.Any(r => _probeGameListings.Any(l => l.RetainerId == r.RetainerId));
             if (!found)
