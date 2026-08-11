@@ -50,6 +50,8 @@ namespace MarketStats.UI
             ImGui.Spacing();
             DrawOwnerLookupSection();
             ImGui.Spacing();
+            DrawIdentityPairSection();
+            ImGui.Spacing();
             DrawTapsSection();
             ImGui.Spacing();
             DrawSelfSection();
@@ -293,6 +295,101 @@ namespace MarketStats.UI
 
         private RetainerOwnerProbe.ProbeResult? _ownerProbe;
         private string _retainerIdInput = string.Empty;
+
+        private List<IdentityPair> _identityPairs = new();
+        private string _pairSummary = string.Empty;
+
+        /// <summary>
+        /// メモリ上から「識別子と名前が並んで置かれている場所」を探し、対応表をまとめて回収する。
+        /// </summary>
+        private void DrawIdentityPairSection()
+        {
+            if (!ImGui.CollapsingHeader("識別子と名前の組を探す###probe_pairs")) return;
+
+            ImGui.TextWrapped(
+                "ゲームが人物の情報を持つとき、識別子と名前は同じレコードに並んで置かれていることが多いです。" +
+                "メモリを走査して両者が近接している箇所を探し、対応表としてまとめて取り込みます。");
+
+            ImGui.Spacing();
+
+            if (ImGui.Button("走査する"))
+            {
+                var regions = IdentityPairScanner.EnumerateRegions();
+                _identityPairs = IdentityPairScanner.Scan(regions);
+
+                var fresh = _identityPairs.Count(p => !p.AlreadyKnown);
+                _pairSummary =
+                    $"{regions.Count} 箇所を走査し、{_identityPairs.Count} 組を発見しました" +
+                    $"（うち未登録 {fresh} 組）。";
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("見つかった組を対応表に登録") && _identityPairs.Count > 0)
+            {
+                var added = 0;
+                foreach (var pair in _identityPairs.Where(p => !p.AlreadyKnown))
+                {
+                    Plugin.Identities.Record(pair.ContentId, pair.Name, 0, Data.IdentitySource.ObjectTable);
+                    added++;
+                }
+
+                Plugin.Identities.Save(force: true);
+                _pairSummary = $"{added} 組を対応表に登録しました。";
+                foreach (var pair in _identityPairs) pair.AlreadyKnown = true;
+            }
+            AttachTooltip(
+                "走査で見つかった組を対応表へ入れます。\n" +
+                "誤検出が混ざる可能性があるため、内容を確認してから実行してください。");
+
+            if (!string.IsNullOrEmpty(_pairSummary))
+            {
+                ImGui.Spacing();
+                ImGui.TextWrapped(_pairSummary);
+            }
+
+            if (_identityPairs.Count == 0) return;
+
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV |
+                ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp;
+
+            if (!ImGui.BeginTable("##pairs", 5, flags, new System.Numerics.Vector2(0, 240))) return;
+
+            ImGui.TableSetupColumn("名前", ImGuiTableColumnFlags.WidthStretch, 1.2f);
+            ImGui.TableSetupColumn("識別子", ImGuiTableColumnFlags.WidthFixed, 150);
+            ImGui.TableSetupColumn("場所", ImGuiTableColumnFlags.WidthStretch, 1.2f);
+            ImGui.TableSetupColumn("距離", ImGuiTableColumnFlags.WidthFixed, 60);
+            ImGui.TableSetupColumn("状態", ImGuiTableColumnFlags.WidthFixed, 80);
+            ImGui.TableSetupScrollFreeze(0, 1);
+            ImGui.TableHeadersRow();
+
+            foreach (var pair in _identityPairs.OrderBy(p => p.Distance))
+            {
+                ImGui.TableNextRow();
+
+                ImGui.TableNextColumn();
+                ImGui.Text(pair.Name);
+
+                ImGui.TableNextColumn();
+                ImGui.TextColored(ColorFavorite, $"0x{pair.ContentId:X}");
+                if (ImGui.IsItemClicked()) ImGui.SetClipboardText(pair.ContentId.ToString());
+
+                ImGui.TableNextColumn();
+                ImGui.TextColored(ColorMuted, pair.Region);
+                AttachTooltip($"識別子 +0x{pair.IdOffset:X} / 名前 +0x{pair.NameOffset:X}");
+
+                ImGui.TableNextColumn();
+                ImGui.Text($"{pair.Distance}");
+
+                ImGui.TableNextColumn();
+                if (pair.AlreadyKnown) ImGui.TextColored(ColorMuted, "登録済み");
+                else ImGui.TextColored(ColorAccent, "未登録");
+            }
+
+            ImGui.EndTable();
+        }
 
         private string _scanInput = string.Empty;
         private List<ScanHit> _scanHits = new();

@@ -219,37 +219,58 @@ namespace MarketStats.UI
                 ImGui.TextColored(ColorMuted,
                     "→ 複数の製作者の品が混ざっています。仕入れて売っている可能性があります。");
 
-            // 同じ製作者の品を扱っている他のリテイナー = 同じ持ち主かもしれない
-            var siblings = Plugin.Retainers.WithSameArtisan(artisanId, profile.RetainerId);
-            if (siblings.Count > 0)
-            {
-                ImGui.Spacing();
-                ImGui.TextColored(ColorAccent, "同じ製作者の品を扱っているリテイナー");
-                ImGui.TextWrapped(
-                    "自作品を複数のリテイナーで売っている場合、これらは同じ持ち主の可能性があります。" +
-                    "どれか 1 つで持ち主が判明すれば、他にも当てはめられます。");
+            DrawLinkedRetainers(profile);
+        }
 
-                foreach (var sibling in siblings.Take(10))
-                {
-                    ImGui.Bullet();
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton($"{sibling.RetainerName}##sib_{sibling.RetainerId}"))
-                        _selectedRetainerId = sibling.RetainerId;
-                    ImGui.SameLine();
-                    ImGui.TextColored(ColorMuted,
-                        $"（この製作者の品 {sibling.ArtisanCounts[artisanId]} 件 / 持ち主 {sibling.DisplayOwner}）");
-                }
+        /// <summary>
+        /// 同じ持ち主だと思われるリテイナーを表示する。
+        /// 名前が分からなくても束ねておけば、1 つ判明した時点でまとめて適用できる。
+        /// </summary>
+        private void DrawLinkedRetainers(RetainerProfile profile)
+        {
+            var links = RetainerLinkAnalyzer.FindLinks(profile, Plugin.Listings, Plugin.Retainers);
+            if (links.Count == 0) return;
+
+            ImGui.Spacing();
+            ImGui.TextColored(ColorAccent, $"同じ持ち主と思われるリテイナー（{links.Count} 件）");
+            ImGui.TextWrapped(
+                "製作者の一致・出品時刻の揃い方・ID の近さ・品揃えの重なりから判断しています。" +
+                "どれか 1 つで持ち主が判明すれば、他にも当てはめられます。");
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (!ImGui.BeginTable("##retainer_links", 4, flags)) return;
+
+            ImGui.TableSetupColumn("リテイナー", ImGuiTableColumnFlags.WidthStretch, 1f);
+            ImGui.TableSetupColumn("確度", ImGuiTableColumnFlags.WidthFixed, 60);
+            ImGui.TableSetupColumn("持ち主", ImGuiTableColumnFlags.WidthStretch, 1f);
+            ImGui.TableSetupColumn("根拠", ImGuiTableColumnFlags.WidthStretch, 2f);
+            ImGui.TableHeadersRow();
+
+            foreach (var link in links.Take(15))
+            {
+                ImGui.TableNextRow();
+
+                ImGui.TableNextColumn();
+                if (ImGui.SmallButton($"{link.RetainerName}##link_{link.RetainerId}"))
+                    _selectedRetainerId = link.RetainerId;
+
+                ImGui.TableNextColumn();
+                ImGui.TextColored(link.Score >= 120 ? ColorFavorite : ColorMuted, link.ConfidenceLabel);
+                AttachTooltip($"スコア {link.Score}");
+
+                ImGui.TableNextColumn();
+                if (string.IsNullOrEmpty(link.KnownOwner))
+                    ImGui.TextColored(ColorMuted, "不明");
+                else
+                    ImGui.TextColored(ColorFavorite, link.KnownOwner);
+
+                ImGui.TableNextColumn();
+                ImGui.TextWrapped(string.Join(" / ", link.Reasons));
             }
 
-            // ID が近いリテイナー（同じ人がまとめて作った可能性）
-            var nearby = Plugin.Retainers.WithNearbyId(profile.RetainerId, 32);
-            if (nearby.Count > 0)
-            {
-                ImGui.Spacing();
-                ImGui.TextColored(ColorMuted, "ID が近いリテイナー（同時に作られた可能性）:");
-                foreach (var (sibling, distance) in nearby.Take(5))
-                    ImGui.BulletText($"{sibling.RetainerName}（差 {distance}） 持ち主 {sibling.DisplayOwner}");
-            }
+            ImGui.EndTable();
         }
 
         private void DrawRetainerDetail()
