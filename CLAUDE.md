@@ -146,3 +146,17 @@ ContentId から名前を引く経路は `IdentityCollector.TryLookupByContentId
 
 - GitHub: `rioriopu/MarketStats`（MIT / Author 表記は estell）
 - 配布リポジトリ: PremiumDevReleaseRepo に `tier: free` で登録（`OPERATIONS.md` の手順 4）
+
+リリースは必ず `scripts/release.py` を通す。
+
+```
+python scripts/release.py --upload
+```
+
+ビルド → zip 作成 → 台帳更新 → 検証 → 転送 を一括で行う。
+
+**バージョンを上げたら必ずビルドし直すこと。**
+zip の中の manifest と配布台帳のバージョンがずれていると、
+Dalamud 側でインストール・更新が失敗する（過去に発生）。
+`release.py` は出荷前に zip 内 manifest / deps.json / 台帳の 3 つを突き合わせ、
+食い違っていたら転送せずに停止する。
