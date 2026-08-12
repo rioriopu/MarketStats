@@ -48,6 +48,8 @@ namespace MarketStats.UI
                 $"出品者名の項目: {(PacketListingProbe.HasPlayerNameProperty ? "あり" : "なし")}");
 
             ImGui.Spacing();
+            DrawContentIdSection();
+            ImGui.Spacing();
             DrawOwnerLookupSection();
             ImGui.Spacing();
             DrawIdentityPairSection();
@@ -298,6 +300,133 @@ namespace MarketStats.UI
 
         private List<IdentityPair> _identityPairs = new();
         private string _pairSummary = string.Empty;
+
+        private string _contentIdInput = string.Empty;
+        private ContentIdProbe.Report? _contentIdReport;
+
+        /// <summary>キャラクター識別子 1 つを指定して、集められる情報をすべて集めるセクション。</summary>
+        private void DrawContentIdSection()
+        {
+            if (!ImGui.CollapsingHeader("識別子を徹底的に調べる###probe_contentid",
+                    ImGuiTreeNodeFlags.DefaultOpen))
+                return;
+
+            ImGui.TextWrapped(
+                "キャラクター識別子を指定すると、名前・関係するリテイナー・購入者としての実績・" +
+                "メモリ上の出現箇所まで、集められる情報をまとめて調べます。");
+
+            ImGui.Spacing();
+            ImGui.SetNextItemWidth(280);
+            var input = _contentIdInput;
+            if (ImGui.InputTextWithHint("##contentid_input",
+                    "識別子（例 0x4000000261800D）", ref input, 32))
+                _contentIdInput = input;
+
+            ImGui.SameLine();
+            if (ImGui.Button("調べる"))
+            {
+                var text = _contentIdInput.Trim();
+                ulong id = 0;
+                var ok = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? ulong.TryParse(text[2..], System.Globalization.NumberStyles.HexNumber, null, out id)
+                    : ulong.TryParse(text, out id);
+
+                _contentIdReport = ok && id != 0 ? ContentIdProbe.Investigate(id) : null;
+            }
+            AttachTooltip("10 進でも 0x 付きの 16 進でも指定できます。");
+
+            if (_contentIdReport == null) return;
+
+            var report = _contentIdReport;
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.TextColored(ColorAccent, $"0x{report.ContentId:X} の調査結果");
+
+            if (!string.IsNullOrEmpty(report.Name))
+            {
+                ImGui.TextColored(ColorFavorite,
+                    $"→ {report.Name}" +
+                    (string.IsNullOrEmpty(report.WorldName) ? string.Empty : $" @ {report.WorldName}") +
+                    $"（{report.NameSource}）");
+
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Lodestone")) LodestoneOpen(report.Name);
+            }
+            else
+            {
+                ImGui.TextColored(ColorMuted, "→ 名前は判明していません。");
+            }
+
+            ImGui.SameLine();
+            var busy = Plugin.CharaCard.IsBusy;
+            if (busy) ImGui.BeginDisabled();
+            if (ImGui.SmallButton("名刺で調べる##cid_card"))
+                Plugin.CharaCard.Request(report.ContentId);
+            if (busy) ImGui.EndDisabled();
+
+            if (!string.IsNullOrEmpty(Plugin.CharaCard.LastResult))
+                ImGui.TextColored(ColorAccent, $"名刺照会: {Plugin.CharaCard.LastResult}");
+
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (ImGui.BeginTable("##cid_findings", 3, flags))
+            {
+                ImGui.TableSetupColumn("調べたこと", ImGuiTableColumnFlags.WidthFixed, 130);
+                ImGui.TableSetupColumn("結果", ImGuiTableColumnFlags.WidthFixed, 50);
+                ImGui.TableSetupColumn("内容", ImGuiTableColumnFlags.WidthStretch, 3f);
+                ImGui.TableHeadersRow();
+
+                foreach (var finding in report.Findings)
+                {
+                    ImGui.TableNextRow();
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text(finding.Category);
+
+                    ImGui.TableNextColumn();
+                    if (finding.Positive) ImGui.TextColored(ColorFavorite, "○");
+                    else ImGui.TextColored(ColorMuted, "-");
+
+                    ImGui.TableNextColumn();
+                    ImGui.TextWrapped(finding.Detail);
+                }
+
+                ImGui.EndTable();
+            }
+
+            if (report.AsArtisan.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted, "この人物の製作品を扱っているリテイナー:");
+                foreach (var profile in report.AsArtisan.Take(10))
+                {
+                    ImGui.Bullet();
+                    ImGui.SameLine();
+                    ImGui.Text($"{profile.RetainerName} — {profile.ArtisanCounts[report.ContentId]} 件 " +
+                               $"（署名の {profile.MainArtisanRatio * 100:F0}% / 持ち主 {profile.DisplayOwner}）");
+                }
+            }
+
+            if (report.AsOwner.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted, "この識別子がオーナーのリテイナー:");
+                foreach (var profile in report.AsOwner.Take(10))
+                    ImGui.BulletText(profile.RetainerName);
+            }
+
+            if (report.MemoryHits.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorMuted, "メモリ上の出現箇所:");
+                foreach (var hit in report.MemoryHits.Take(10))
+                    ImGui.BulletText(hit.ToString());
+            }
+        }
 
         /// <summary>
         /// メモリ上から「識別子と名前が並んで置かれている場所」を探し、対応表をまとめて回収する。
