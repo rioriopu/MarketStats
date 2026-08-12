@@ -105,7 +105,7 @@ namespace MarketStats.UI
                 ImGui.TableNextRow();
 
                 ImGui.TableNextColumn();
-                DrawOwnerName(first.OwnerContentId, first.RetainerName);
+                DrawOwnerName(first.OwnerContentId, first.RetainerName, first.RetainerId);
 
                 ImGui.TableNextColumn();
                 var retainers = group.Select(l => l.RetainerName)
@@ -164,7 +164,7 @@ namespace MarketStats.UI
                 ImGui.TextColored(ColorMuted, listing.RetainerName);
 
                 ImGui.TableNextColumn();
-                DrawOwnerName(listing.OwnerContentId, listing.RetainerName);
+                DrawOwnerName(listing.OwnerContentId, listing.RetainerName, listing.RetainerId);
 
                 ImGui.TableNextColumn();
                 ImGui.Text(listing.Hq ? "HQ" : string.Empty);
@@ -174,12 +174,45 @@ namespace MarketStats.UI
         }
 
         /// <summary>出品者（オーナー）の名前を、判明している範囲で描画する。</summary>
-        private static void DrawOwnerName(ulong contentId, string retainerName)
+        private static void DrawOwnerName(ulong contentId, string retainerName, ulong retainerId = 0)
         {
             if (contentId == 0)
             {
-                ImGui.TextColored(ColorMuted, "(識別子なし)");
-                AttachTooltip("Universalis 由来の出品など、オーナーの識別子が取れていない出品です。");
+                // 出品データに識別子が入らないため、リテイナー台帳の判定を使う。
+                var profile = retainerId != 0
+                    ? Plugin.Retainers.Resolve(retainerId)
+                    : Plugin.Retainers.ResolveByName(retainerName);
+
+                if (profile != null && profile.IsMine)
+                {
+                    ImGui.TextColored(ColorFavorite, $"{profile.OwnerName}（自分）");
+                    return;
+                }
+
+                if (profile is { HasOwner: true })
+                {
+                    ImGui.TextColored(ColorLink, profile.OwnerName!);
+                    if (ImGui.IsItemClicked()) LodestoneOpen(profile.OwnerName!);
+                    AttachTooltip(
+                        $"確度 {profile.Confidence}。\n" +
+                        string.Join("\n", profile.GuessReasons.Take(4)) +
+                        "\nクリックで Lodestone のキャラクター検索を開きます。");
+                    return;
+                }
+
+                if (profile != null && !string.IsNullOrEmpty(profile.GuessedOwnerName))
+                {
+                    ImGui.TextColored(ColorAccent, $"{profile.GuessedOwnerName}（推定）");
+                    AttachTooltip(
+                        $"確度 {profile.Confidence}。\n" + string.Join("\n", profile.GuessReasons.Take(4)));
+                    return;
+                }
+
+                ImGui.TextColored(ColorMuted, "不明");
+                AttachTooltip(
+                    "出品データに出品者の識別子が含まれていないため、直接は分かりません。\n" +
+                    "製作者署名・購入履歴・関連するリテイナーから推定を試みています。\n" +
+                    "「リテイナー」タブで手動設定もできます。");
                 return;
             }
 

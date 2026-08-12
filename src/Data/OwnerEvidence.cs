@@ -29,6 +29,9 @@ namespace MarketStats.Data
 
         /// <summary>チャットで本人がリテイナー名に言及していた。</summary>
         ChatMention,
+
+        /// <summary>同じ持ち主と思われる別のリテイナーで、持ち主が判明している。</summary>
+        SiblingRetainer,
     }
 
     /// <summary>持ち主を割り出すための手がかり 1 件。</summary>
@@ -60,6 +63,7 @@ namespace MarketStats.Data
             EvidenceKind.OwnSaleCorrelation => "あなたの販売履歴",
             EvidenceKind.MarketHistoryCorrelation => "マーケットの購入履歴",
             EvidenceKind.ChatMention => "チャットでの言及",
+            EvidenceKind.SiblingRetainer => "同じ持ち主のリテイナー",
             _ => "その他",
         };
     }
@@ -101,6 +105,9 @@ namespace MarketStats.Data
     {
         /// <summary>結論として採用する最低確度。</summary>
         public const int MinimumConfidence = 55;
+
+        /// <summary>この重みを超える手がかりは、それ 1 つだけでも結論を出してよい。</summary>
+        public const int StandaloneWeight = 140;
 
         public static OwnerConclusion Evaluate(IReadOnlyList<OwnerEvidence> evidence)
         {
@@ -182,8 +189,10 @@ namespace MarketStats.Data
                 confidence = Math.Max(0, confidence - byName[1].Score / 4);
             }
 
-            // 手がかりが 1 種類だけなら、単独では断定しない。
-            if (best.Kinds < 2 && best.Items.Count < 3)
+            // 手がかりが 1 種類だけなら、原則として断定しない。
+            // ただし、それ 1 つで十分に強い手がかり（製作者署名がほぼ全件一致など）は例外とする。
+            var strongest = best.Items.Max(e => e.Weight);
+            if (best.Kinds < 2 && best.Items.Count < 3 && strongest < StandaloneWeight)
             {
                 conclusion.Inconclusive = "手がかりが 1 種類だけです";
                 conclusion.Supporting = best.Items;

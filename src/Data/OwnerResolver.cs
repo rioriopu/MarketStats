@@ -42,8 +42,12 @@ namespace MarketStats.Data
             var window = (long)Math.Max(1, windowHours) * 3600L;
             var updated = 0;
 
-            foreach (var profile in profiles)
+            // 2 周する。1 周目で判明した持ち主を、2 周目で関連するリテイナーへ波及させるため。
+            for (var pass = 0; pass < 2; pass++)
+            foreach (var stale in profiles)
             {
+                // 前の周で更新されている可能性があるので、最新の状態を引き直す。
+                var profile = registry.Resolve(stale.RetainerId) ?? stale;
                 var evidence = new List<OwnerEvidence>();
 
                 CollectCertainEvidence(profile, identities, evidence);
@@ -55,9 +59,11 @@ namespace MarketStats.Data
                 }
 
                 CollectChatEvidence(profile, evidence);
+                CollectSiblingEvidence(profile, registry, evidence);
 
                 var conclusion = OwnerEvidenceEvaluator.Evaluate(evidence);
-                if (registry.ApplyConclusion(profile.RetainerId, conclusion, evidence)) updated++;
+                if (registry.ApplyConclusion(profile.RetainerId, conclusion, evidence) && pass == 0)
+                    updated++;
             }
 
             return updated;
@@ -140,8 +146,17 @@ namespace MarketStats.Data
             var identity = identities.Resolve(top.Key);
             if (identity == null || string.IsNullOrWhiteSpace(identity.Name)) return;
 
-            // 名前が推定でしかない場合は、この手がかりも弱める。
-            var weight = identity.Source == IdentitySource.Inferred ? 30 : 70;
+            // 偏りが強く件数も多いほど、その人が持ち主である可能性は高い。
+            // 「署名がほぼ全件同じ人」は他の手がかりが無くても結論を出せる強さとして扱う。
+            int weight;
+            if (identity.Source == IdentitySource.Inferred)
+                weight = 30;
+            else if (ratio >= 0.99 && signed.Count >= 5)
+                weight = 170;
+            else if (ratio >= 0.95 && signed.Count >= 3)
+                weight = 120;
+            else
+                weight = 70;
 
             evidence.Add(new OwnerEvidence
             {
@@ -150,7 +165,10 @@ namespace MarketStats.Data
                 ContentId = top.Key,
                 Weight = weight,
                 Description =
-                    $"署名のある出品 {signed.Count} 件のうち {top.Count()} 件が {identity.Name} の製作品です",
+                    $"署名のある出品 {signed.Count} 件のうち {top.Count()} 件（{ratio * 100:F0}%）が {identity.Name} の製作品です" +
+                    (weight >= OwnerEvidenceEvaluator.StandaloneWeight
+                        ? "。ほぼ全件が同じ人の作なので、自作品を売っていると考えられます。"
+                        : string.Empty),
                 Unix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             });
         }
@@ -251,6 +269,39 @@ namespace MarketStats.Data
                     (best.Value.Quantity ? "（数量も符合）" : string.Empty),
                 Unix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             });
+        }
+
+        /// <summary>
+        /// 同じ持ち主と思われる別のリテイナーで、すでに持ち主が判明している場合、
+        /// その名前をこちらにも当てはめる。
+        ///
+        /// 自作品を複数のリテイナーで売っている人は多いので、
+        /// 1 体で判明すれば残りにも波及させられる。
+        /// </summary>
+        private static void CollectSiblingEvidence(
+            RetainerProfile profile, RetainerRegistry registry, List<OwnerEvidence> evidence)
+        {
+            var artisanId = profile.MainArtisanId;
+            if (artisanId == 0 || profile.MainArtisanRatio < 0.8) return;
+
+            foreach (var sibling in registry.WithSameArtisan(artisanId, profile.RetainerId))
+            {
+                // 相手も同じ製作者が主力で、かつ持ち主が確定しているときだけ採用する。
+                if (!sibling.HasOwner || string.IsNullOrEmpty(sibling.OwnerName)) continue;
+                if (sibling.MainArtisanId != artisanId || sibling.MainArtisanRatio < 0.8) continue;
+
+                evidence.Add(new OwnerEvidence
+                {
+                    Kind = EvidenceKind.SiblingRetainer,
+                    OwnerName = sibling.OwnerName!,
+                    Weight = sibling.IsMine ? 90 : 75,
+                    Description =
+                        $"同じ製作者の品を主力にしている「{sibling.RetainerName}」の持ち主が {sibling.OwnerName} です",
+                    Unix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                });
+
+                break;
+            }
         }
 
         /// <summary>チャットで本人がリテイナー名に言及していた場合の手がかり。</summary>
