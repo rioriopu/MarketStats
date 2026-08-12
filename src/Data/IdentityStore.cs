@@ -156,6 +156,19 @@ namespace MarketStats.Data
             }
         }
 
+        /// <summary>名前の一部で探す（表記ゆれや、うろ覚えの名前から辿るため）。</summary>
+        public List<OwnerIdentity> SearchByName(string fragment)
+        {
+            if (string.IsNullOrWhiteSpace(fragment)) return new List<OwnerIdentity>();
+
+            lock (_lock)
+                return _map.Values
+                    .Where(v => v.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(v => v.Source)
+                    .ThenByDescending(v => v.LastSeenUnix)
+                    .ToList();
+        }
+
         /// <summary>表示用の名前。解決できない場合は ContentId の短縮表記を返す。</summary>
         public string DisplayName(ulong contentId)
         {

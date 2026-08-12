@@ -68,6 +68,9 @@ namespace MarketStats.UI
                 _marketBuyersDirty = true;
             AttachTooltip("自分のリテイナーから買ったことのある人だけに絞ります。");
 
+            ImGui.SameLine();
+            DrawCollectButton();
+
             ImGui.Spacing();
             ImGui.TextColored(ColorMuted,
                 $"購入履歴 {Plugin.Purchases.Count:N0} 件（{Plugin.Purchases.ItemCount} 種）" +
@@ -101,6 +104,63 @@ namespace MarketStats.UI
             if (ImGui.BeginChild("##mb_detail", new System.Numerics.Vector2(0, 0), true))
                 DrawMarketBuyerDetail();
             ImGui.EndChild();
+        }
+
+        private System.Threading.Tasks.Task<(int Items, int Added, string? Error)>? _collectTask;
+        private string _collectStatus = string.Empty;
+
+        /// <summary>
+        /// マーケット全体から購入履歴をまとめて取り込むボタン。
+        /// 「最近取引のあったアイテム」を一覧で取り、その履歴を一括で引く。
+        /// </summary>
+        private void DrawCollectButton()
+        {
+            if (!Plugin.Config.EnableUniversalis)
+            {
+                ImGui.TextColored(ColorAccent, "※ 購入履歴を集めるには Universalis 連携が必要です");
+                AttachTooltip("設定タブ →「Universalis 連携」を有効にしてください。");
+                return;
+            }
+
+            var running = _collectTask is { IsCompleted: false };
+            if (running) ImGui.BeginDisabled();
+
+            if (ImGui.Button("マーケット全体から集める"))
+            {
+                _collectStatus = "取得中…";
+                _collectTask = Plugin.Universalis.CollectAndStoreAsync();
+            }
+
+            if (running) ImGui.EndDisabled();
+
+            AttachTooltip(
+                "最近取引のあったアイテムを一覧で取り、その購入履歴をまとめて取り込みます。\n" +
+                "買い手の名前は公開情報なので、これで「誰が大量に買っているか」の材料が一気に貯まります。\n" +
+                "通信は数回で済みます。");
+
+            if (_collectTask is { IsCompleted: true })
+            {
+                if (_collectTask.IsCompletedSuccessfully)
+                {
+                    var (items, added, error) = _collectTask.Result;
+                    _collectStatus = error != null
+                        ? $"取得に失敗しました: {error}"
+                        : $"{items} 種のアイテムから {added:N0} 件の購入履歴を取り込みました。";
+                    _marketBuyersDirty = true;
+                }
+                else
+                {
+                    _collectStatus = "取得に失敗しました。";
+                }
+
+                _collectTask = null;
+            }
+
+            if (!string.IsNullOrEmpty(_collectStatus))
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(ColorMuted, _collectStatus);
+            }
         }
 
         private void EnsureMarketBuyers()

@@ -53,7 +53,10 @@ namespace MarketStats.Game
         {
             var trimmed = name.Trim();
 
-            var identity = Plugin.Identities.ResolveByName(trimmed);
+            // 完全一致が無ければ、名前の一部でも探す。
+            var identity = Plugin.Identities.ResolveByName(trimmed)
+                           ?? Plugin.Identities.SearchByName(trimmed).FirstOrDefault();
+
             if (identity != null)
             {
                 var report = Investigate(identity.ContentId);
@@ -65,11 +68,18 @@ namespace MarketStats.Game
             var byName = new Report { Name = trimmed, NameSource = "入力" };
 
             Add(byName, "対応表",
-                "この名前の識別子は分かっていません。マーケットで製作品にカーソルを合わせるか、" +
-                "その人物を見かけると対応が取れます。", false);
+                $"この名前の識別子は分かっていません（対応表は {Plugin.Identities.Count:N0} 件登録済み）。" +
+                "マーケットで製作品にカーソルを合わせるか、その人物を見かけると対応が取れます。", false);
 
             SearchAsBuyer(byName);
             SearchRetainersByOwnerName(byName, trimmed);
+
+            // 材料がまったく無いなら、集め方を案内する。
+            if (Plugin.Purchases.Count == 0)
+                Add(byName, "次にすること",
+                    "購入履歴がまだ 1 件もありません。「買い占め」タブの" +
+                    "「マーケット全体から集める」を押すと、まとめて取り込めます" +
+                    "（設定で Universalis 連携を有効にしてください）。", false);
 
             return byName;
         }
@@ -233,11 +243,15 @@ namespace MarketStats.Game
                 Plugin.Purchases, Plugin.Store, Plugin.Retainers, Plugin.Config.SessionWindowSeconds);
 
             report.AsBuyer = buyers.FirstOrDefault(b =>
-                string.Equals(b.BuyerName, report.Name, StringComparison.OrdinalIgnoreCase));
+                                 string.Equals(b.BuyerName, report.Name, StringComparison.OrdinalIgnoreCase))
+                             ?? buyers.FirstOrDefault(b =>
+                                 b.BuyerName.Contains(report.Name, StringComparison.OrdinalIgnoreCase));
 
             if (report.AsBuyer == null)
             {
-                Add(report, "購入者として", $"{report.Name} の購入履歴は記録にありません。", false);
+                Add(report, "購入者として",
+                    $"{report.Name} の購入履歴は記録にありません" +
+                    $"（購入履歴は {Plugin.Purchases.Count:N0} 件 / {Plugin.Purchases.ItemCount} 種を保持）。", false);
                 return;
             }
 

@@ -221,6 +221,120 @@ namespace MarketStats.Game
             return result;
         }
 
+        /// <summary>
+        /// マーケット全体から購入履歴をまとめて集める。
+        ///
+        /// 「最近取引のあったアイテム」を一覧で取り、その履歴を一括で引く。
+        /// 購入者の名前は公開情報なので、これで「誰が何を大量に買っているか」の材料が一気に貯まる。
+        /// リクエストはアイテム一覧 1 回 + 履歴 (アイテム数 / 100) 回で済む。
+        /// </summary>
+        public async Task<(int Items, int Added, string? Error)> CollectAndStoreAsync(
+            int itemCount = 200, int entriesPerItem = 50)
+        {
+            var itemIds = await FetchRecentlyUpdatedItemsAsync(itemCount).ConfigureAwait(false);
+            if (itemIds.Count == 0) return (0, 0, "最近取引のあったアイテムを取得できませんでした。");
+
+            var scope = ResolveScope();
+            var all = new List<Data.MarketPurchase>();
+
+            try
+            {
+                foreach (var chunk in Chunk(itemIds, 100))
+                {
+                    var url = $"{BaseUrl}/history/{Uri.EscapeDataString(scope)}/" +
+                              string.Join(",", chunk) +
+                              $"?entriesToReturn={Math.Clamp(entriesPerItem, 1, 200)}";
+
+                    var json = await _http.GetStringAsync(url).ConfigureAwait(false);
+                    ParseBulkHistory(json, all);
+                }
+            }
+            catch (Exception e)
+            {
+                return (itemIds.Count, 0, e.Message);
+            }
+
+            var added = Plugin.Purchases.Add(all);
+            Plugin.Purchases.Save(force: true);
+            return (itemIds.Count, added, null);
+        }
+
+        /// <summary>最近取引のあったアイテムの ID を取得する。</summary>
+        private async Task<List<uint>> FetchRecentlyUpdatedItemsAsync(int count)
+        {
+            var result = new List<uint>();
+
+            var world = LodestoneLink.GetCurrentWorld();
+            var query = !string.IsNullOrEmpty(world)
+                ? $"world={Uri.EscapeDataString(world)}"
+                : $"dcName={Uri.EscapeDataString(ResolveScope())}";
+
+            var url = $"{BaseUrl}/extra/stats/most-recently-updated?{query}" +
+                      $"&entries={Math.Clamp(count, 1, 200)}";
+
+            var json = await _http.GetStringAsync(url).ConfigureAwait(false);
+            var items = JObject.Parse(json)["items"] as JArray;
+            if (items == null) return result;
+
+            foreach (var item in items)
+            {
+                var id = (uint?)item["itemID"] ?? 0;
+                if (id != 0 && !result.Contains(id)) result.Add(id);
+            }
+
+            return result;
+        }
+
+        /// <summary>一括取得した履歴を読み解く。</summary>
+        private static void ParseBulkHistory(string json, List<Data.MarketPurchase> output)
+        {
+            var root = JObject.Parse(json);
+
+            // 単一アイテムのときは items が無く、直接 entries が入る。
+            if (root["items"] is not JObject items)
+            {
+                AppendEntries(root, (uint?)root["itemID"] ?? 0, output);
+                return;
+            }
+
+            foreach (var property in items.Properties())
+            {
+                if (property.Value is not JObject item) continue;
+                if (!uint.TryParse(property.Name, out var itemId)) continue;
+                AppendEntries(item, itemId, output);
+            }
+        }
+
+        private static void AppendEntries(JObject item, uint itemId, List<Data.MarketPurchase> output)
+        {
+            if (itemId == 0) return;
+            if (item["entries"] is not JArray entries) return;
+
+            foreach (var entry in entries)
+            {
+                var buyer = (string?)entry["buyerName"];
+                if (string.IsNullOrWhiteSpace(buyer)) continue;
+
+                output.Add(new Data.MarketPurchase
+                {
+                    ItemId = itemId,
+                    Hq = (bool?)entry["hq"] ?? false,
+                    BuyerName = buyer,
+                    Quantity = (long?)entry["quantity"] ?? 0,
+                    UnitPrice = (long?)entry["pricePerUnit"] ?? 0,
+                    UnixTime = (long?)entry["timestamp"] ?? 0,
+                    OnMannequin = (bool?)entry["onMannequin"] ?? false,
+                    WorldName = (string?)entry["worldName"] ?? string.Empty,
+                });
+            }
+        }
+
+        private static IEnumerable<List<T>> Chunk<T>(List<T> source, int size)
+        {
+            for (var i = 0; i < source.Count; i += size)
+                yield return source.GetRange(i, Math.Min(size, source.Count - i));
+        }
+
         /// <summary>取得した購入履歴を、購入者分析用のレコードへ変換する。</summary>
         public static List<Data.MarketPurchase> ToPurchases(MarketSnapshot snapshot)
         {
