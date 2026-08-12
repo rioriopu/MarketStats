@@ -200,6 +200,18 @@ namespace MarketStats.UI
                     "出品者タブの「名刺」ボタンで調べたとき、読み取り後に名刺のウィンドウを閉じます。\n" +
                     "この照会はボタンを押した 1 件だけに対して行われ、まとめて自動照会することはありません。");
 
+                var harvest = config.HarvestCrafterNames;
+                if (ImGui.Checkbox("アイテム説明の製作者名から対応表を集める", ref harvest))
+                {
+                    config.HarvestCrafterNames = harvest;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "マーケットで製作品にカーソルを合わせると、説明に製作者名が表示されます。\n" +
+                    "そのとき同時にアイテムへ刻まれた製作者の識別子も読めるので、\n" +
+                    "名刺を使わずに識別子と名前の対応を集められます。\n" +
+                    $"取得数: {Plugin.CrafterNames.HarvestCount} / 直近: {Plugin.CrafterNames.LastHarvest}");
+
                 var chatWatch = config.EnableChatRetainerWatch;
                 if (ImGui.Checkbox("チャットでのリテイナー名の言及を手がかりにする", ref chatWatch))
                 {

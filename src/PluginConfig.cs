@@ -93,6 +93,12 @@ namespace MarketStats
         public bool EnablePacketCapture { get; set; } = false;
 
         /// <summary>
+        /// アイテムの説明に出る製作者名から、識別子と名前の対応を集める。
+        /// マーケットで製作品にカーソルを合わせるだけで対応表が増える。
+        /// </summary>
+        public bool HarvestCrafterNames { get; set; } = true;
+
+        /// <summary>
         /// 識別子の走査で、ポインタの先まで辿るか。
         /// 読み取り可否は毎回 OS へ確認するが、走査範囲が大きく広がるため既定では無効。
         /// </summary>
