@@ -66,7 +66,6 @@ namespace MarketStats.Game
                     Add(regions, "リンクシェル", (nint)infoModule->GetInfoProxyById(InfoProxyId.LinkshellMember), 0xD0);
                     Add(regions, "パーティ", (nint)infoModule->GetInfoProxyById(InfoProxyId.PartyMember), 0xD0);
                     Add(regions, "コンテンツ同行者", (nint)infoModule->GetInfoProxyById(InfoProxyId.ContentMember), 0xD0);
-                    Add(regions, "手紙", (nint)infoModule->GetInfoProxyById(InfoProxyId.Letter), 0xD0);
                 }
 
                 var agentModule = AgentModule.Instance();

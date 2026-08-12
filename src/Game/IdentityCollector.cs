@@ -16,25 +16,52 @@ namespace MarketStats.Game
     /// </summary>
     public sealed unsafe class IdentityCollector
     {
-        // ゲームが保持している「名前と ContentId が両方分かっているリスト」を片端から読む。
-        // どれか 1 つにでも載っていれば、その相手の名前を出せるようになる。
+        // ゲームが保持している「名前と ContentId が両方分かっているリスト」を読む。
+        //
+        // ここに並べてよいのは InfoProxyCommonList として扱える種類だけ。
+        // 型の違うもの（手紙・サークル・クロスワールドパーティ・各種招待など）を混ぜると、
+        // 別の意味のフィールドをポインタとして読んでしまい、アクセス違反でゲームごと落ちる。
         private static readonly (InfoProxyId Id, IdentitySource Source)[] Proxies =
         {
             (InfoProxyId.PartyMember, IdentitySource.Party),
-            (InfoProxyId.CrossRealmParty, IdentitySource.Party),
-            (InfoProxyId.PartyInvite, IdentitySource.Party),
             (InfoProxyId.FriendList, IdentitySource.Friend),
             (InfoProxyId.FreeCompanyMember, IdentitySource.FreeCompany),
-            (InfoProxyId.FreeCompanyInvite, IdentitySource.FreeCompany),
             (InfoProxyId.LinkshellMember, IdentitySource.Linkshell),
             (InfoProxyId.CrossWorldLinkshellMember, IdentitySource.Linkshell),
             (InfoProxyId.ContentMember, IdentitySource.Party),
             (InfoProxyId.NoviceNetworkMember, IdentitySource.Linkshell),
             (InfoProxyId.Blacklist, IdentitySource.ObjectTable),
-            (InfoProxyId.Letter, IdentitySource.Friend),
-            (InfoProxyId.CircleList, IdentitySource.Linkshell),
-            (InfoProxyId.Circle, IdentitySource.Linkshell),
         };
+
+        /// <summary>1 リストあたりの妥当な最大人数。これを超える値は壊れているとみなす。</summary>
+        private const int MaxEntries = 512;
+
+        /// <summary>
+        /// リストの中身を安全に読めるか確かめる。
+        /// 件数とポインタの両方を検証してからでないと触らない。
+        /// </summary>
+        private static bool TryGetEntries(
+            InfoProxyCommonList* proxy, out InfoProxyCommonList.CharacterData* data, out int count)
+        {
+            data = null;
+            count = 0;
+
+            if (proxy == null) return false;
+            if (!SafeMemory.IsFullyReadable((nint)proxy, sizeof(InfoProxyCommonList))) return false;
+
+            var entryCount = (int)proxy->EntryCount;
+            if (entryCount is <= 0 or > MaxEntries) return false;
+
+            var charData = proxy->CharData;
+            if (charData == null) return false;
+
+            var size = sizeof(InfoProxyCommonList.CharacterData) * entryCount;
+            if (!SafeMemory.IsFullyReadable((nint)charData, size)) return false;
+
+            data = charData;
+            count = entryCount;
+            return true;
+        }
 
         private DateTime _nextObjectScanUtc = DateTime.MinValue;
         private DateTime _nextProxyScanUtc = DateTime.MinValue;
@@ -114,18 +141,23 @@ namespace MarketStats.Game
                 foreach (var (id, source) in Proxies)
                 {
                     var proxy = (InfoProxyCommonList*)module->GetInfoProxyById(id);
-                    if (proxy == null) continue;
 
-                    var entry = proxy->GetEntryByContentId(contentId);
-                    if (entry == null) continue;
+                    // 中身が読める状態か確かめてから問い合わせる。
+                    if (!TryGetEntries(proxy, out var entries, out var count)) continue;
 
-                    var found = entry->NameString;
-                    if (string.IsNullOrWhiteSpace(found)) continue;
+                    for (var i = 0; i < count; i++)
+                    {
+                        ref var entry = ref entries[i];
+                        if (entry.ContentId != contentId) continue;
 
-                    name = found;
-                    worldId = entry->HomeWorld;
-                    Plugin.Identities.Record(contentId, name, worldId, source);
-                    return true;
+                        var found = entry.NameString;
+                        if (string.IsNullOrWhiteSpace(found)) continue;
+
+                        name = found;
+                        worldId = entry.HomeWorld;
+                        Plugin.Identities.Record(contentId, name, worldId, source);
+                        return true;
+                    }
                 }
             }
             catch (Exception e)
@@ -146,13 +178,16 @@ namespace MarketStats.Game
                 foreach (var (id, source) in Proxies)
                 {
                     var proxy = (InfoProxyCommonList*)module->GetInfoProxyById(id);
-                    if (proxy == null) continue;
+                    if (!TryGetEntries(proxy, out var entries, out var count)) continue;
 
-                    foreach (ref readonly var data in proxy->CharDataSpan)
+                    for (var i = 0; i < count; i++)
                     {
+                        ref var data = ref entries[i];
                         if (data.ContentId == 0) continue;
+
                         var name = data.NameString;
                         if (string.IsNullOrWhiteSpace(name)) continue;
+
                         Plugin.Identities.Record(data.ContentId, name, data.HomeWorld, source);
                     }
                 }

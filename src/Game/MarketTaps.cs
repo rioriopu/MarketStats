@@ -191,9 +191,18 @@ namespace MarketStats.Game
 
             try
             {
-                var bytes = new byte[CaptureSize];
+                // 届いたアドレスが必ず 512 バイト読めるとは限らない。
+                // 読める分だけを取り込む（範囲外を読むとゲームごと落ちる）。
+                var readable = SafeMemory.GetReadableSize(address, CaptureSize);
+                if (readable < 16)
+                {
+                    status.LastFinding = "データを読み取れませんでした。";
+                    return;
+                }
+
+                var bytes = new byte[readable];
                 fixed (byte* destination = bytes)
-                    Buffer.MemoryCopy((void*)address, destination, CaptureSize, CaptureSize);
+                    Buffer.MemoryCopy((void*)address, destination, readable, readable);
 
                 var capture = new CapturedPacket
                 {
