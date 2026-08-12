@@ -302,6 +302,7 @@ namespace MarketStats.UI
         private string _pairSummary = string.Empty;
 
         private string _contentIdInput = string.Empty;
+        private string _nameInput = string.Empty;
         private ContentIdProbe.Report? _contentIdReport;
 
         /// <summary>キャラクター識別子 1 つを指定して、集められる情報をすべて集めるセクション。</summary>
@@ -334,6 +335,25 @@ namespace MarketStats.UI
                 _contentIdReport = ok && id != 0 ? ContentIdProbe.Investigate(id) : null;
             }
             AttachTooltip("10 進でも 0x 付きの 16 進でも指定できます。");
+
+            // Lodestone で名前が分かっても識別子は分からないので、名前からも調べられるようにする。
+            ImGui.SetNextItemWidth(280);
+            var nameInput = _nameInput;
+            if (ImGui.InputTextWithHint("##name_input",
+                    "キャラクター名（例 Omu Anko）", ref nameInput, 48))
+                _nameInput = nameInput;
+
+            ImGui.SameLine();
+            if (ImGui.Button("名前で調べる"))
+            {
+                var text = _nameInput.Trim();
+                _contentIdReport = string.IsNullOrEmpty(text)
+                    ? null
+                    : ContentIdProbe.InvestigateByName(text);
+            }
+            AttachTooltip(
+                "Lodestone の ID とゲーム内の識別子は別のもので、相互に変換できません。\n" +
+                "名前を手がかりに、購入履歴・リテイナー・対応表と突き合わせます。");
 
             if (_contentIdReport == null) return;
 

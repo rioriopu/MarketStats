@@ -45,6 +45,53 @@ namespace MarketStats.Game
             public List<string> NearbyNames { get; } = new();
         }
 
+        /// <summary>
+        /// 名前から調べる。Lodestone で名前が分かっても識別子は分からないため、
+        /// 名前を手がかりに、こちらが持っている情報を突き合わせる。
+        /// </summary>
+        public static Report InvestigateByName(string name)
+        {
+            var trimmed = name.Trim();
+
+            var identity = Plugin.Identities.ResolveByName(trimmed);
+            if (identity != null)
+            {
+                var report = Investigate(identity.ContentId);
+                report.Name ??= identity.Name;
+                return report;
+            }
+
+            // 識別子が分からなくても、名前だけで照合できるものはある。
+            var byName = new Report { Name = trimmed, NameSource = "入力" };
+
+            Add(byName, "対応表",
+                "この名前の識別子は分かっていません。マーケットで製作品にカーソルを合わせるか、" +
+                "その人物を見かけると対応が取れます。", false);
+
+            SearchAsBuyer(byName);
+            SearchRetainersByOwnerName(byName, trimmed);
+
+            return byName;
+        }
+
+        /// <summary>名前で、持ち主として記録されているリテイナーを探す。</summary>
+        private static void SearchRetainersByOwnerName(Report report, string name)
+        {
+            var matches = Plugin.Retainers.Snapshot()
+                .Where(p => string.Equals(p.OwnerName, name, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(p.GuessedOwnerName, name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            report.AsOwner.AddRange(matches);
+
+            Add(report, "リテイナー",
+                matches.Count == 0
+                    ? "この名前が持ち主のリテイナーは記録にありません。"
+                    : $"{matches.Count} 体のリテイナーの持ち主として記録されています" +
+                      $"（{string.Join(", ", matches.Select(p => p.RetainerName))}）。",
+                matches.Count > 0);
+        }
+
         public static Report Investigate(ulong contentId)
         {
             var report = new Report { ContentId = contentId };
