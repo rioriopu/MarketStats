@@ -24,10 +24,14 @@ namespace MarketStats.UI
 
             ImGui.Spacing();
 
-            ImGui.SetNextItemWidth(220);
+            ImGui.SetNextItemWidth(260);
             var search = _retainerSearch;
-            if (ImGui.InputTextWithHint("##retainer_search", "リテイナー名 / 持ち主で絞り込み", ref search, 64))
+            if (ImGui.InputTextWithHint("##retainer_search",
+                    "リテイナー名 / 持ち主 / 識別子で絞り込み", ref search, 64))
                 _retainerSearch = search;
+            AttachTooltip(
+                "名前のほか、リテイナー ID・オーナー ID・製作者 ID でも絞り込めます\n" +
+                "（0x 付きの 16 進、10 進のどちらでも）。");
 
             ImGui.SameLine();
             ImGui.Checkbox("判明・推定できたものだけ", ref _retainerIdentifiedOnly);
@@ -57,10 +61,22 @@ namespace MarketStats.UI
             if (!string.IsNullOrWhiteSpace(_retainerSearch))
             {
                 var q = _retainerSearch.Trim();
-                profiles = profiles.Where(p =>
-                    p.RetainerName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                    (p.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                    (p.GuessedOwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+
+                // 識別子でも探せるようにする（16 進 / 10 進のどちらでも）。
+                if (TryParseId(q, out var id))
+                {
+                    profiles = profiles.Where(p =>
+                        p.RetainerId == id ||
+                        p.OwnerContentId == id ||
+                        p.ArtisanCounts.ContainsKey(id)).ToList();
+                }
+                else
+                {
+                    profiles = profiles.Where(p =>
+                        p.RetainerName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                        (p.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (p.GuessedOwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+                }
             }
 
             if (profiles.Count == 0)
@@ -92,9 +108,10 @@ namespace MarketStats.UI
                 ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV |
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp;
 
-            if (!ImGui.BeginTable("##retainers", 6, flags)) return;
+            if (!ImGui.BeginTable("##retainers", 7, flags)) return;
 
             ImGui.TableSetupColumn("リテイナー", ImGuiTableColumnFlags.WidthStretch, 1.1f);
+            ImGui.TableSetupColumn("リテイナー ID", ImGuiTableColumnFlags.WidthFixed, 150);
             ImGui.TableSetupColumn("持ち主", ImGuiTableColumnFlags.WidthStretch, 1.3f);
             ImGui.TableSetupColumn("確度", ImGuiTableColumnFlags.WidthFixed, 60);
             ImGui.TableSetupColumn("出品", ImGuiTableColumnFlags.WidthFixed, 60);
@@ -114,6 +131,9 @@ namespace MarketStats.UI
                     _selectedRetainerId = profile.RetainerId;
                 ImGui.SameLine(0, 0);
                 ImGui.Text(string.IsNullOrEmpty(profile.RetainerName) ? "(名前不明)" : profile.RetainerName);
+
+                ImGui.TableNextColumn();
+                DrawCopyableId(profile.RetainerId, $"rid_{profile.RetainerId}");
 
                 ImGui.TableNextColumn();
                 if (profile.IsMine)
@@ -271,6 +291,166 @@ namespace MarketStats.UI
             }
 
             ImGui.EndTable();
+
+            // 判明している持ち主がいれば、その名前をこのリテイナーにも当てはめられる。
+            var resolved = links.FirstOrDefault(l => !string.IsNullOrEmpty(l.KnownOwner));
+            if (resolved == null || profile.HasOwner) return;
+
+            ImGui.Spacing();
+            if (ImGui.Button($"「{resolved.KnownOwner}」をこのリテイナーの持ち主として設定"))
+            {
+                Plugin.Retainers.SetOwnerManually(profile.RetainerId, resolved.KnownOwner!);
+                Plugin.Retainers.Save(force: true);
+            }
+            AttachTooltip(
+                $"関連するリテイナー「{resolved.RetainerName}」の持ち主が {resolved.KnownOwner} です。\n" +
+                "同じ人物だと判断できるなら、ここで確定させられます。");
+        }
+
+        /// <summary>
+        /// このリテイナーに紐づく識別子を並べる。
+        /// コピーして外部で調べたり、そこから関連を辿ったりできるようにする。
+        /// </summary>
+        private void DrawIdentifiers(RetainerProfile profile)
+        {
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (!ImGui.BeginTable("##identifiers", 3, flags)) return;
+
+            ImGui.TableSetupColumn("識別子", ImGuiTableColumnFlags.WidthFixed, 130);
+            ImGui.TableSetupColumn("値", ImGuiTableColumnFlags.WidthFixed, 260);
+            ImGui.TableSetupColumn("辿る", ImGuiTableColumnFlags.WidthStretch, 1f);
+            ImGui.TableHeadersRow();
+
+            // リテイナー ID
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.Text("リテイナー ID");
+            ImGui.TableNextColumn();
+            DrawCopyableId(profile.RetainerId, $"det_rid_{profile.RetainerId}", showSearchButton: true);
+            ImGui.TableNextColumn();
+            if (ImGui.SmallButton($"持ち主を探す##probe_rid_{profile.RetainerId}"))
+                OpenProbeForRetainerId(profile.RetainerId);
+            AttachTooltip("検証タブで、この ID から持ち主を辿れないか順に試します。");
+
+            // オーナー ID
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.Text("オーナー ID");
+            ImGui.TableNextColumn();
+            if (profile.OwnerContentId != 0)
+                DrawCopyableId(profile.OwnerContentId, $"det_oid_{profile.RetainerId}", showSearchButton: true);
+            else
+            {
+                ImGui.TextColored(ColorMuted, "届いていません");
+                AttachTooltip("マーケットの出品データに出品者の識別子は含まれていません（サーバーが送っていません）。");
+            }
+            ImGui.TableNextColumn();
+            if (profile.OwnerContentId != 0 && ImGui.SmallButton($"調べる##probe_oid_{profile.RetainerId}"))
+                OpenProbeForContentId(profile.OwnerContentId);
+
+            // 主な製作者 ID
+            var artisanId = profile.MainArtisanId;
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.Text("主な製作者 ID");
+            ImGui.TableNextColumn();
+            if (artisanId != 0)
+                DrawCopyableId(artisanId, $"det_aid_{profile.RetainerId}", showSearchButton: true);
+            else
+                ImGui.TextColored(ColorMuted, "-");
+            ImGui.TableNextColumn();
+            if (artisanId != 0)
+            {
+                if (ImGui.SmallButton($"調べる##probe_aid_{profile.RetainerId}"))
+                    OpenProbeForContentId(artisanId);
+
+                ImGui.SameLine();
+                var busy = Plugin.CharaCard.IsBusy;
+                if (busy) ImGui.BeginDisabled();
+                if (ImGui.SmallButton($"名刺##card_aid_{profile.RetainerId}"))
+                    Plugin.CharaCard.Request(artisanId);
+                if (busy) ImGui.EndDisabled();
+            }
+
+            ImGui.EndTable();
+
+            if (profile.ArtisanCounts.Count > 1)
+            {
+                ImGui.TextColored(ColorMuted,
+                    $"ほかに {profile.ArtisanCounts.Count - 1} 人の製作者の品も扱っています: " +
+                    string.Join(", ", profile.ArtisanCounts
+                        .Where(kv => kv.Key != artisanId)
+                        .OrderByDescending(kv => kv.Value)
+                        .Take(4)
+                        .Select(kv => $"0x{kv.Key:X}({kv.Value}件)")));
+            }
+        }
+
+        /// <summary>検証タブを開いて、この識別子を調べる。</summary>
+        private void OpenProbeForContentId(ulong id)
+        {
+            _contentIdInput = $"0x{id:X}";
+            _contentIdReport = Game.ContentIdProbe.Investigate(id);
+            _requestedTab = Tab.Probe;
+        }
+
+        /// <summary>検証タブを開いて、このリテイナー ID から持ち主を辿る。</summary>
+        private void OpenProbeForRetainerId(ulong id)
+        {
+            _retainerIdInput = $"0x{id:X}";
+            _ownerProbe = Game.RetainerOwnerProbe.TryResolve(id);
+            _requestedTab = Tab.Probe;
+        }
+
+        /// <summary>
+        /// 識別子を、コピーと再検索ができる形で描画する。
+        /// 左クリックで 16 進をコピー、右クリックで 10 進をコピー。
+        /// </summary>
+        private void DrawCopyableId(ulong id, string key, bool showSearchButton = false)
+        {
+            if (id == 0)
+            {
+                ImGui.TextColored(ColorMuted, "-");
+                return;
+            }
+
+            var hex = $"0x{id:X}";
+            ImGui.TextColored(ColorFavorite, hex);
+
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Left)) ImGui.SetClipboardText(hex);
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) ImGui.SetClipboardText(id.ToString());
+
+            AttachTooltip(
+                $"16 進: {hex}\n10 進: {id:N0}\n\n" +
+                "左クリックで 16 進をコピー / 右クリックで 10 進をコピー\n" +
+                "（Universalis などは 10 進で扱います）");
+
+            if (!showSearchButton) return;
+
+            ImGui.SameLine();
+            if (ImGui.SmallButton($"この ID で絞り込む##f_{key}"))
+                _retainerSearch = hex;
+            AttachTooltip("この識別子に関係するリテイナーだけを一覧に残します。");
+        }
+
+        /// <summary>識別子の文字列を数値に直す（16 進 / 10 進の両対応）。</summary>
+        private static bool TryParseId(string text, out ulong id)
+        {
+            text = text.Trim();
+
+            if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                return ulong.TryParse(text[2..], System.Globalization.NumberStyles.HexNumber, null, out id);
+
+            // 10 進として解釈できる場合のみ（名前と紛れないよう、すべて数字のときに限る）
+            if (text.Length >= 6 && text.All(char.IsAsciiDigit))
+                return ulong.TryParse(text, out id);
+
+            id = 0;
+            return false;
         }
 
         private void DrawRetainerDetail()
@@ -305,6 +485,8 @@ namespace MarketStats.UI
                 ImGui.SameLine();
                 ImGui.TextColored(ColorMuted, $"（確度 {profile.Confidence}）");
             }
+
+            DrawIdentifiers(profile);
 
             // 集めた手がかりを種類ごとに並べる。
             if (profile.Evidence.Count > 0)
