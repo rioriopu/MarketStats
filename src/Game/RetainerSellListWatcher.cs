@@ -1,3 +1,4 @@
+using System.Linq;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using FFXIVClientStructs.FFXIV.Client.Game;
@@ -114,6 +115,20 @@ namespace MarketStats.Game
                 Plugin.PluginLog.Debug("出品リストが別のリテイナーの内容だったため、今回の読み取りを見送りました。");
                 return;
             }
+
+            // 現在の出品内容として記録する（キャラクター別・リテイナー別の一覧に使う）。
+            var own = listings.Select(l => new OwnListing
+            {
+                ItemId = l.ItemId,
+                Hq = l.Hq,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                ListingId = l.ListingId,
+                ObservedUnix = now,
+            }).ToList();
+
+            Plugin.OwnListings.UpdateListings(retainerId, own);
+            Plugin.OwnListings.Save();
 
             // 0 件のときは「まだ読み込めていない」場合と区別できないため、誤検出を避けて何もしない。
             if (listings.Count == 0) return;

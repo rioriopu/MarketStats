@@ -47,6 +47,7 @@ namespace MarketStats
         internal static readonly PendingSaleStore Pending = new();
         internal static readonly MarketHistoryStore Purchases = new();
         internal static readonly RetainerRegistry Retainers = new();
+        internal static readonly OwnListingStore OwnListings = new();
         internal static readonly UniversalisClient Universalis = new();
         internal static readonly LodestoneVerifier NameVerifier = new();
 
@@ -85,6 +86,7 @@ namespace MarketStats
                 Pending.Load();
                 Purchases.Load();
                 Retainers.Load();
+                OwnListings.Load();
                 Layout.Load();
 
                 Store.Prune(Config, Favorites);
@@ -279,12 +281,23 @@ namespace MarketStats
                 var ownerId = PlayerState.ContentId;
                 var count = manager->GetRetainerCount();
 
+                var world = Game.LodestoneLink.GetCurrentWorld();
+
                 for (uint i = 0; i < count; i++)
                 {
                     var retainer = manager->GetRetainerBySortedIndex(i);
                     if (retainer == null || retainer->RetainerId == 0) continue;
-                    Retainers.RegisterOwn(retainer->RetainerId, retainer->NameString, owner, ownerId);
+
+                    var name = retainer->NameString;
+                    Retainers.RegisterOwn(retainer->RetainerId, name, owner, ownerId);
+
+                    // キャラクター別・リテイナー別の一覧に使う概要も控えておく。
+                    OwnListings.UpdateSummary(
+                        retainer->RetainerId, name, ownerId, owner, world,
+                        retainer->Gil, retainer->MarketItemCount, retainer->MarketExpire, (byte)retainer->Town);
                 }
+
+                OwnListings.Save();
             }
             catch (Exception e)
             {
@@ -410,6 +423,11 @@ namespace MarketStats
                 case "":
                     _mainWindow.Toggle();
                     break;
+                case "own":
+                case "mylistings":
+                    _mainWindow.RequestTab(MainWindow.Tab.OwnListings);
+                    _mainWindow.IsOpen = true;
+                    break;
                 case "search":
                 case "find":
                     _mainWindow.RequestTab(MainWindow.Tab.Search);
@@ -498,6 +516,7 @@ namespace MarketStats
             Identities.Save(force: true);
             Purchases.Save(force: true);
             Retainers.Save(force: true);
+            OwnListings.Save(force: true);
             Listings.Save(force: true);
             Pending.Save(force: true);
 

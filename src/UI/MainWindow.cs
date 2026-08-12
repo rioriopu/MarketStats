@@ -21,6 +21,7 @@ namespace MarketStats.UI
             Search,
             Buyers,
             History,
+            OwnListings,
             Sellers,
             MarketBuyers,
             Retainers,
@@ -44,6 +45,9 @@ namespace MarketStats.UI
         // 選択状態
         private string? _selectedBuyer;
         private Tab? _requestedTab;
+
+        /// <summary>表示するキャラクター（0 ならすべて）。複数キャラを使い分けるための絞り込み。</summary>
+        private ulong _characterFilter;
 
         private static readonly string[] PeriodLabels = { "すべて", "24時間", "3日", "1週間" };
         private static readonly int[] PeriodDays = { 0, 1, 3, 7 };
@@ -84,6 +88,7 @@ namespace MarketStats.UI
             DrawTab("検索", Tab.Search, DrawSearchTab);
             DrawTab("購入者別", Tab.Buyers, DrawBuyersTab);
             DrawTab("取引履歴", Tab.History, DrawHistoryTab);
+            DrawTab("自分の出品", Tab.OwnListings, DrawOwnListingsTab);
             DrawTab("出品者", Tab.Sellers, DrawSellersTab);
             DrawTab("買い占め", Tab.MarketBuyers, DrawMarketBuyersTab);
             DrawTab("リテイナー", Tab.Retainers, DrawRetainersTab);
@@ -139,7 +144,10 @@ namespace MarketStats.UI
 
             var records = Plugin.Store.Snapshot();
 
-            if (Plugin.Config.FilterCurrentCharacterOnly)
+            // 表示するキャラクターの絞り込み（0 = すべて）
+            if (_characterFilter != 0)
+                records = records.Where(r => r.OwnerContentId == _characterFilter).ToList();
+            else if (Plugin.Config.FilterCurrentCharacterOnly)
             {
                 var cid = Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.ContentId : 0;
                 if (cid != 0) records = records.Where(r => r.OwnerContentId == cid).ToList();
@@ -205,12 +213,66 @@ namespace MarketStats.UI
             AttachTooltip("表示する期間の絞り込みです。保持期間（設定タブ）とは別で、ログ自体は削除されません。");
 
             ImGui.SameLine();
+            DrawCharacterFilter();
+
+            ImGui.SameLine();
             var favOnly = _favoritesOnly;
             if (ImGui.Checkbox("お気に入りのみ", ref favOnly))
             {
                 _favoritesOnly = favOnly;
                 _statsDirty = true;
             }
+        }
+
+        /// <summary>
+        /// 表示するキャラクターを選ぶ。複数のキャラクターでリテイナーを運用している場合に、
+        /// キャラごとの売上を切り替えて見られるようにする。
+        /// </summary>
+        private void DrawCharacterFilter()
+        {
+            var characters = CollectCharacters();
+            if (characters.Count <= 1) return;   // 1 人しか居なければ出す意味がない
+
+            var current = _characterFilter == 0
+                ? "すべてのキャラ"
+                : characters.FirstOrDefault(c => c.ContentId == _characterFilter).Display ?? "すべてのキャラ";
+
+            ImGui.SetNextItemWidth(180);
+            if (!ImGui.BeginCombo("##charfilter", current)) return;
+
+            if (ImGui.Selectable("すべてのキャラ", _characterFilter == 0))
+            {
+                _characterFilter = 0;
+                _statsDirty = true;
+            }
+
+            foreach (var character in characters)
+            {
+                if (!ImGui.Selectable(character.Display, _characterFilter == character.ContentId)) continue;
+                _characterFilter = character.ContentId;
+                _statsDirty = true;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        /// <summary>売却ログとリテイナー情報から、これまでに確認したキャラクターを集める。</summary>
+        private static List<(ulong ContentId, string Display)> CollectCharacters()
+        {
+            var map = new Dictionary<ulong, string>();
+
+            foreach (var record in Plugin.Store.Snapshot())
+            {
+                if (record.OwnerContentId == 0 || string.IsNullOrEmpty(record.OwnerName)) continue;
+                map[record.OwnerContentId] = string.IsNullOrEmpty(record.OwnerWorld)
+                    ? record.OwnerName
+                    : $"{record.OwnerName} @ {record.OwnerWorld}";
+            }
+
+            foreach (var character in Plugin.OwnListings.ByCharacter())
+                if (character.ContentId != 0) map[character.ContentId] = character.Display;
+
+            return map.Select(kv => (kv.Key, kv.Value)).OrderBy(c => c.Value).ToList();
         }
 
         // ---- 共通ヘルパー ----
