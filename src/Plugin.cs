@@ -60,6 +60,7 @@ namespace MarketStats
         internal static ChatRetainerWatcher ChatWatcher { get; private set; } = null!;
         internal static MarketTaps Taps { get; private set; } = null!;
         internal static CrafterNameHarvester CrafterNames { get; private set; } = null!;
+        internal static readonly LayoutLearner Layout = new();
 
         private static MainWindow? _mainWindow;
         private static SellerOverlayWindow? _sellerOverlay;
@@ -84,6 +85,7 @@ namespace MarketStats
                 Pending.Load();
                 Purchases.Load();
                 Retainers.Load();
+                Layout.Load();
 
                 Store.Prune(Config, Favorites);
                 Listings.Prune(Config.ListingRetentionDays);
@@ -407,6 +409,11 @@ namespace MarketStats
             {
                 case "":
                     _mainWindow.Toggle();
+                    break;
+                case "search":
+                case "find":
+                    _mainWindow.RequestTab(MainWindow.Tab.Search);
+                    _mainWindow.IsOpen = true;
                     break;
                 case "buyers":
                     _mainWindow.RequestTab(MainWindow.Tab.Buyers);

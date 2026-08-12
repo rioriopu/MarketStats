@@ -193,6 +193,10 @@ namespace MarketStats.Game
 
             Plugin.Listings.Observe(records);
             foreach (var record in records) Plugin.Retainers.Observe(record);
+
+            // 出品を読むついでに、読み方が合っているかを確かめて覚える。
+            // ゲームの更新で位置がずれても、ここで学び直せる。
+            Plugin.Layout.Learn();
             ObservedListingCount += records.Count;
             LastObservedItemId = proxy->SearchItemId != 0 ? proxy->SearchItemId : records[0].ItemId;
 

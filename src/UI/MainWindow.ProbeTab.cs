@@ -48,6 +48,8 @@ namespace MarketStats.UI
                 $"出品者名の項目: {(PacketListingProbe.HasPlayerNameProperty ? "あり" : "なし")}");
 
             ImGui.Spacing();
+            DrawLayoutSection();
+            ImGui.Spacing();
             DrawContentIdSection();
             ImGui.Spacing();
             DrawOwnerLookupSection();
@@ -304,6 +306,79 @@ namespace MarketStats.UI
         private string _contentIdInput = string.Empty;
         private string _nameInput = string.Empty;
         private ContentIdProbe.Report? _contentIdReport;
+
+        /// <summary>
+        /// プラグインが自分で確かめて覚えた「出品データの読み方」を表示する。
+        /// ゲームの更新で位置がずれても、ここで学び直せる。
+        /// </summary>
+        private void DrawLayoutSection()
+        {
+            if (!ImGui.CollapsingHeader("読み方の自己学習###probe_layout")) return;
+
+            ImGui.TextWrapped(
+                "出品データの読み取り位置は決め打ちなので、ゲームの更新でずれることがあります。" +
+                "そこで「答えが分かっているもの」——検索中のアイテムや自分のリテイナー——を使って、" +
+                "実際にどの位置にあるかを確かめて記憶します。マーケットを開くたびに自動で検算します。");
+
+            ImGui.Spacing();
+
+            if (ImGui.Button("いま学習する"))
+                Plugin.Layout.Learn();
+            AttachTooltip("マーケットでアイテムの出品一覧を開いた状態で押してください。");
+
+            ImGui.SameLine();
+            if (ImGui.Button("学習結果を消去"))
+                Plugin.Layout.Clear();
+
+            ImGui.Spacing();
+            ImGui.TextWrapped(Plugin.Layout.LastResult);
+
+            if (Plugin.Layout.LastLearnedLocal != DateTime.MinValue)
+                ImGui.TextColored(ColorMuted, $"最終学習: {Plugin.Layout.LastLearnedLocal:yyyy-MM-dd HH:mm:ss}");
+
+            var learned = Plugin.Layout.Snapshot();
+            if (learned.Count == 0) return;
+
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (ImGui.BeginTable("##layout", 4, flags))
+            {
+                ImGui.TableSetupColumn("項目", ImGuiTableColumnFlags.WidthFixed, 120);
+                ImGui.TableSetupColumn("学習した位置", ImGuiTableColumnFlags.WidthFixed, 110);
+                ImGui.TableSetupColumn("確認/不一致", ImGuiTableColumnFlags.WidthFixed, 110);
+                ImGui.TableSetupColumn("状態", ImGuiTableColumnFlags.WidthStretch, 1f);
+                ImGui.TableHeadersRow();
+
+                foreach (var field in learned)
+                {
+                    ImGui.TableNextRow();
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text(field.Name);
+
+                    ImGui.TableNextColumn();
+                    ImGui.TextColored(ColorFavorite, $"+0x{field.Offset:X2}");
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text($"{field.Confirmations} / {field.Mismatches}");
+
+                    ImGui.TableNextColumn();
+                    if (field.IsReliable)
+                        ImGui.TextColored(ColorFavorite, "信用できます");
+                    else
+                        ImGui.TextColored(ColorMuted, "確認中");
+                }
+
+                ImGui.EndTable();
+            }
+
+            ImGui.Spacing();
+            ImGui.TextColored(ColorMuted, "決め打ちの定義との比較:");
+            ImGui.TextUnformatted(Plugin.Layout.DescribeDivergence());
+        }
 
         /// <summary>キャラクター識別子 1 つを指定して、集められる情報をすべて集めるセクション。</summary>
         private void DrawContentIdSection()

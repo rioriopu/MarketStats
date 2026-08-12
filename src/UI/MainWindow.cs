@@ -18,6 +18,7 @@ namespace MarketStats.UI
     {
         public enum Tab
         {
+            Search,
             Buyers,
             History,
             Sellers,
@@ -80,6 +81,7 @@ namespace MarketStats.UI
 
             if (!ImGui.BeginTabBar("##marketstats_tabs")) return;
 
+            DrawTab("検索", Tab.Search, DrawSearchTab);
             DrawTab("購入者別", Tab.Buyers, DrawBuyersTab);
             DrawTab("取引履歴", Tab.History, DrawHistoryTab);
             DrawTab("出品者", Tab.Sellers, DrawSellersTab);
