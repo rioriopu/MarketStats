@@ -92,6 +92,8 @@ namespace MarketStats.Game
             try
             {
                 var found = 0;
+                var territory = Plugin.ClientState.TerritoryType;
+
                 foreach (var obj in Plugin.ObjectTable)
                 {
                     if (obj is not IPlayerCharacter player) continue;
@@ -111,9 +113,12 @@ namespace MarketStats.Game
                         ? IdentitySource.Self
                         : IdentitySource.ObjectTable;
 
-                    // アカウントの識別子も一緒に控えておく。
-                    // 同じ値を持つキャラクターは同一アカウント＝同じ人の別キャラと分かる。
-                    Plugin.Identities.Record(contentId, name, worldId, source, chara->AccountId);
+                    // アカウントの識別子と、見かけた場所・回数も一緒に控えておく。
+                    // よく見かける相手ほど身近な人物で、名前の確度も高い。
+                    Plugin.Identities.Record(
+                        contentId, name, worldId, source,
+                        chara->AccountId, territory, countEncounter: true);
+
                     found++;
                 }
 

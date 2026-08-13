@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <Authors>estell</Authors>
-    <Version>0.18.2.0</Version>
+    <Version>0.19.0.0</Version>
     <Description>Aggregate your retainer sale history by buyer, with resale tracking and seller identification.</Description>
     <RepositoryUrl>https://github.com/rioriopu/MarketStats</RepositoryUrl>
     <Configurations>Debug;Release</Configurations>

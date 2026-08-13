@@ -451,6 +451,10 @@ namespace MarketStats
                     _mainWindow.RequestTab(MainWindow.Tab.MarketBuyers);
                     _mainWindow.IsOpen = true;
                     break;
+                case "players":
+                    _mainWindow.RequestTab(MainWindow.Tab.Players);
+                    _mainWindow.IsOpen = true;
+                    break;
                 case "retainers":
                     _mainWindow.RequestTab(MainWindow.Tab.Retainers);
                     _mainWindow.IsOpen = true;

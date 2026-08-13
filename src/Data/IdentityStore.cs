@@ -30,6 +30,17 @@ namespace MarketStats.Data
         CharaCard = 9,
     }
 
+    /// <summary>ある時点での名前とワールド。改名やワールド移転を追うために残す。</summary>
+    public sealed class NameRecord
+    {
+        public string Name { get; set; } = string.Empty;
+        public ushort WorldId { get; set; }
+        public long UntilUnix { get; set; }
+
+        [JsonIgnore]
+        public DateTime UntilLocal => DateTimeOffset.FromUnixTimeSeconds(UntilUnix).LocalDateTime;
+    }
+
     /// <summary>ContentId とキャラクター名の対応。</summary>
     public sealed class OwnerIdentity
     {
@@ -48,6 +59,26 @@ namespace MarketStats.Data
         /// 分かっていれば、検索を挟まずに本人のページを直接開ける。
         /// </summary>
         public long LodestoneId { get; set; }
+
+        /// <summary>最初に確認した時刻。</summary>
+        public long FirstSeenUnix { get; set; }
+
+        /// <summary>これまでに見かけた回数。よく見かける相手ほど身近な人物といえる。</summary>
+        public int SeenCount { get; set; }
+
+        /// <summary>最後に見かけた場所（テリトリー）。</summary>
+        public uint LastTerritory { get; set; }
+
+        /// <summary>
+        /// 名前とワールドの移り変わり。
+        /// 改名やワールド移転をしても、同じ人物として追い続けられるようにする。
+        /// </summary>
+        public List<NameRecord> History { get; set; } = new();
+
+        /// <summary>過去の名前も含めて、この名前で呼ばれていたことがあるか。</summary>
+        public bool MatchesName(string name) =>
+            string.Equals(Name, name, StringComparison.OrdinalIgnoreCase) ||
+            History.Any(h => string.Equals(h.Name, name, StringComparison.OrdinalIgnoreCase));
         public IdentitySource Source { get; set; }
         public long LastSeenUnix { get; set; }
 
@@ -91,26 +122,60 @@ namespace MarketStats.Data
 
         /// <summary>ゲームから直接得られた身元情報を記録する。</summary>
         public void Record(
-            ulong contentId, string name, ushort worldId, IdentitySource source, ulong accountId = 0)
+            ulong contentId, string name, ushort worldId, IdentitySource source,
+            ulong accountId = 0, uint territory = 0, bool countEncounter = false)
         {
             if (contentId == 0 || string.IsNullOrWhiteSpace(name)) return;
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             lock (_lock)
             {
                 if (_map.TryGetValue(contentId, out var existing))
                 {
-                    // アカウント識別子は後から分かることがあるので、取れたら足す。
+                    // 後から分かる情報は、取れたときに足していく。
                     if (accountId != 0) existing.AccountId = accountId;
+                    if (territory != 0) existing.LastTerritory = territory;
+                    if (countEncounter) existing.SeenCount++;
+
+                    existing.LastSeenUnix = now;
+                    if (existing.FirstSeenUnix == 0) existing.FirstSeenUnix = now;
+
+                    // 名前やワールドが変わっていたら、前の名前を履歴に残してから差し替える。
+                    // 改名やワールド移転をしても、同じ人物として追い続けられる。
+                    var renamed = !string.Equals(existing.Name, name, StringComparison.Ordinal);
+                    var moved = worldId != 0 && existing.WorldId != 0 && existing.WorldId != worldId;
+
+                    if ((renamed || moved) && source >= existing.Source)
+                    {
+                        existing.History.Add(new NameRecord
+                        {
+                            Name = existing.Name,
+                            WorldId = existing.WorldId,
+                            UntilUnix = now,
+                        });
+
+                        if (existing.History.Count > 10)
+                            existing.History.RemoveRange(0, existing.History.Count - 10);
+
+                        Plugin.PluginLog.Information(
+                            renamed
+                                ? $"名前の変更を記録しました: {existing.Name} → {name}"
+                                : $"ワールドの移動を記録しました: {existing.Name}");
+                    }
 
                     // より弱い出所で確定情報を塗り潰さない。
                     if (existing.Source > source)
                     {
-                        existing.LastSeenUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                         _dirty = true;
                         return;
                     }
 
-                    accountId = accountId != 0 ? accountId : existing.AccountId;
+                    existing.Name = name;
+                    if (worldId != 0) existing.WorldId = worldId;
+                    existing.Source = source;
+                    _dirty = true;
+                    return;
                 }
 
                 _map[contentId] = new OwnerIdentity
@@ -119,11 +184,29 @@ namespace MarketStats.Data
                     Name = name,
                     WorldId = worldId,
                     AccountId = accountId,
+                    LastTerritory = territory,
                     Source = source,
-                    LastSeenUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    FirstSeenUnix = now,
+                    LastSeenUnix = now,
+                    SeenCount = countEncounter ? 1 : 0,
                 };
                 _dirty = true;
             }
+        }
+
+        /// <summary>過去の名前も含めて探す。改名した相手も見つけられる。</summary>
+        public List<OwnerIdentity> SearchByAnyName(string fragment)
+        {
+            if (string.IsNullOrWhiteSpace(fragment)) return new List<OwnerIdentity>();
+
+            lock (_lock)
+                return _map.Values
+                    .Where(v => v.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase) ||
+                                v.History.Any(h =>
+                                    h.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase)))
+                    .OrderByDescending(v => v.Source)
+                    .ThenByDescending(v => v.SeenCount)
+                    .ToList();
         }
 
         /// <summary>

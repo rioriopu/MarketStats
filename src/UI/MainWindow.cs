@@ -23,6 +23,7 @@ namespace MarketStats.UI
             History,
             OwnListings,
             Sellers,
+            Players,
             MarketBuyers,
             Retainers,
             Market,
@@ -90,6 +91,7 @@ namespace MarketStats.UI
             DrawTab("取引履歴", Tab.History, DrawHistoryTab);
             DrawTab("自分の出品", Tab.OwnListings, DrawOwnListingsTab);
             DrawTab("出品者", Tab.Sellers, DrawSellersTab);
+            DrawTab("プレイヤー", Tab.Players, DrawPlayersTab);
             DrawTab("買い占め", Tab.MarketBuyers, DrawMarketBuyersTab);
             DrawTab("リテイナー", Tab.Retainers, DrawRetainersTab);
             DrawTab("相場", Tab.Market, DrawMarketTab);
