@@ -14,6 +14,7 @@ namespace MarketStats.UI
 
         private bool _confirmClear;
         private string _importText = string.Empty;
+        private string _importPath = string.Empty;
         private string _importStatus = string.Empty;
         private bool _showImport;
 
@@ -41,6 +42,25 @@ namespace MarketStats.UI
                 "見出し行や、識別子が数字でない行は自動的に読み飛ばします。");
 
             ImGui.Spacing();
+
+            // ファイルから直接読み込む（貼り付けの手間を省く）
+            ImGui.SetNextItemWidth(420);
+            var path = _importPath;
+            if (ImGui.InputTextWithHint("##import_path",
+                    "ファイルのパス（例 C:\\path\\to\\identities.csv）", ref path, 512))
+                _importPath = path;
+
+            ImGui.SameLine();
+            if (ImGui.Button("ファイルから取り込む"))
+            {
+                var result = Data.IdentityImporter.ImportFile(_importPath);
+                _importStatus = result.Summary +
+                                (result.Problems.Count > 0 ? "\n" + string.Join("\n", result.Problems) : string.Empty);
+            }
+            AttachTooltip("エクスプローラーからファイルをドラッグしてパスを貼り付けることもできます。");
+
+            ImGui.Spacing();
+            ImGui.TextColored(ColorMuted, "または、内容を直接貼り付けてください:");
 
             var text = _importText;
             if (ImGui.InputTextMultiline("##import_text", ref text, 200_000,

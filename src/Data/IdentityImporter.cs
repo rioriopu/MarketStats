@@ -83,6 +83,30 @@ namespace MarketStats.Data
             return result;
         }
 
+        /// <summary>ファイルから読み込んで取り込む。</summary>
+        public static ImportResult ImportFile(string path, IdentitySource source = IdentitySource.ObjectTable)
+        {
+            var result = new ImportResult();
+
+            try
+            {
+                var trimmed = path.Trim().Trim('"');
+
+                if (!System.IO.File.Exists(trimmed))
+                {
+                    result.Problems.Add($"ファイルが見つかりません: {trimmed}");
+                    return result;
+                }
+
+                return Import(System.IO.File.ReadAllText(trimmed), source);
+            }
+            catch (Exception e)
+            {
+                result.Problems.Add($"読み込みに失敗しました: {e.Message}");
+                return result;
+            }
+        }
+
         /// <summary>いま持っている対応表を、取り込みと同じ形で書き出す。</summary>
         public static string Export(bool confirmedOnly = true)
         {
