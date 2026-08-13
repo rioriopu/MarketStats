@@ -11,6 +11,55 @@ namespace MarketStats.UI
         private ulong _selectedRetainerId;
         private ulong _manualOwnerTarget;
         private string _manualOwnerName = string.Empty;
+        private bool _showIdentificationReport;
+
+        /// <summary>
+        /// 他人を確定できる経路と、その成果を並べる。
+        /// どこから名前が取れているのか、何が足りないのかを見えるようにする。
+        /// </summary>
+        private void DrawIdentificationReport()
+        {
+            ImGui.Spacing();
+            ImGui.TextWrapped(
+                "他人のキャラクターを言い当てるには、名前と識別子が結び付いた記録が要ります。" +
+                "どの経路がどれだけ効いているかを示します。");
+
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (!ImGui.BeginTable("##identification_routes", 4, flags)) return;
+
+            ImGui.TableSetupColumn("経路", ImGuiTableColumnFlags.WidthFixed, 200);
+            ImGui.TableSetupColumn("確度", ImGuiTableColumnFlags.WidthFixed, 60);
+            ImGui.TableSetupColumn("件数", ImGuiTableColumnFlags.WidthFixed, 70);
+            ImGui.TableSetupColumn("状況", ImGuiTableColumnFlags.WidthStretch, 2.5f);
+            ImGui.TableHeadersRow();
+
+            foreach (var route in Data.IdentificationReport.Build())
+            {
+                ImGui.TableNextRow();
+
+                ImGui.TableNextColumn();
+                ImGui.Text(route.Name);
+                AttachTooltip(route.Description);
+
+                ImGui.TableNextColumn();
+                if (!route.Available) ImGui.TextColored(ColorMuted, "不可");
+                else if (route.IsCertain) ImGui.TextColored(ColorFavorite, "確定");
+                else ImGui.TextColored(ColorAccent, "推定");
+
+                ImGui.TableNextColumn();
+                ImGui.Text($"{route.Count:N0}");
+
+                ImGui.TableNextColumn();
+                ImGui.TextWrapped(route.Note);
+            }
+
+            ImGui.EndTable();
+            ImGui.Spacing();
+        }
 
         /// <summary>
         /// マーケットで見かけたリテイナーの台帳。持ち主が判明／推定できたものを一覧する。
@@ -48,9 +97,25 @@ namespace MarketStats.UI
             AttachTooltip("蓄積済みの出品と購入履歴をもとに、その場で推定をやり直します。");
 
             ImGui.Spacing();
-            ImGui.TextColored(ColorMuted,
-                $"リテイナー {Plugin.Retainers.Count:N0} 件 / 持ち主が分かったもの {Plugin.Retainers.IdentifiedCount:N0} 件 / " +
-                $"購入履歴 {Plugin.Purchases.Count:N0} 件（{Plugin.Purchases.ItemCount} 種）");
+
+            var (certain, guessed, unknown) = Data.IdentificationReport.RetainerSummary();
+            ImGui.TextColored(ColorFavorite, $"確定 {certain:N0} 件");
+            ImGui.SameLine();
+            ImGui.TextColored(ColorMuted, "/");
+            ImGui.SameLine();
+            ImGui.TextColored(ColorAccent, $"候補あり {guessed:N0} 件");
+            ImGui.SameLine();
+            ImGui.TextColored(ColorMuted, $"/ 不明 {unknown:N0} 件 / 購入履歴 {Plugin.Purchases.Count:N0} 件");
+            AttachTooltip(
+                "確定 … 名刺・メンバーリスト・自分のリテイナー・手動設定で裏が取れているもの\n" +
+                "候補あり … 状況証拠から候補は挙がっているが、断定はできないもの");
+
+            ImGui.SameLine();
+            if (ImGui.SmallButton("特定の内訳"))
+                _showIdentificationReport = !_showIdentificationReport;
+
+            if (_showIdentificationReport) DrawIdentificationReport();
+
             ImGui.Separator();
 
             var profiles = Plugin.Retainers.Snapshot();

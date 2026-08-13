@@ -94,23 +94,16 @@ namespace MarketStats.Data
             {
                 if (string.IsNullOrWhiteSpace(e.OwnerName)) return true;
 
-                // 自分のリテイナーでないのに、自分が候補に挙がるのはおかしい。
-                if (!profile.IsMine && Plugin.PlayerState.IsLoaded &&
-                    string.Equals(e.OwnerName, Plugin.PlayerState.CharacterName, StringComparison.OrdinalIgnoreCase))
+                // 自分のリテイナーでないなら、その持ち主が自分であることはあり得ない。
+                //
+                // 自分が作った物を買った人が売っていたり、自分が買った直後に別の人が
+                // 同じ物を出したりすると、手がかりが自分を指してしまうため、ここで確実に落とす。
+                // ログイン中のキャラクターだけでなく、把握している自キャラすべてが対象。
+                if (!profile.IsMine &&
+                    (SelfIdentity.IsSelf(e.OwnerName) || SelfIdentity.IsSelf(e.ContentId)))
                     return true;
 
-                // すでに別のリテイナーの持ち主として確定している人物は、
-                // そのリテイナーが自作品を主力にしているなら、こちらの持ち主ではない可能性が高い。
-                // ただし複数リテイナーを持つのは普通なので、弱い手がかりのときだけ落とす。
-                if (e.Weight >= 70) return false;
-
-                var elsewhere = Plugin.Retainers.Snapshot().FirstOrDefault(p =>
-                    p.RetainerId != profile.RetainerId &&
-                    p.IsMine &&
-                    string.Equals(p.OwnerName, e.OwnerName, StringComparison.OrdinalIgnoreCase));
-
-                // 自分のキャラクターが候補になっている弱い手がかりは落とす。
-                return elsewhere != null;
+                return false;
             });
         }
 
@@ -191,6 +184,10 @@ namespace MarketStats.Data
             var identity = identities.Resolve(top.Key);
             if (identity == null || string.IsNullOrWhiteSpace(identity.Name)) return;
 
+            // 製作者が自分なら、それは「自分が作って誰かに渡った物」であって、
+            // その出品者が自分だということにはならない。
+            if (SelfIdentity.IsSelf(identity.Name) || SelfIdentity.IsSelf(top.Key)) return;
+
             // 偏りが強く件数も多いほど、その人が持ち主である可能性は高い。
             // 「署名がほぼ全件同じ人」は他の手がかりが無くても結論を出せる強さとして扱う。
             int weight;
@@ -247,6 +244,9 @@ namespace MarketStats.Data
                     if (string.IsNullOrWhiteSpace(purchase.BuyerName)) continue;
                     if (purchase.Hq != listing.Hq) continue;
 
+                    // 自分が買った記録は、他人のリテイナーの持ち主を示す手がかりにはならない。
+                    if (SelfIdentity.IsSelf(purchase.BuyerName)) continue;
+
                     var delta = listedAt - purchase.UnixTime;
                     if (delta < 0 || delta > window) continue;
 
@@ -256,6 +256,7 @@ namespace MarketStats.Data
                 foreach (var sale in ownSales)
                 {
                     if (sale.ItemId != listing.ItemId || sale.Hq != listing.Hq) continue;
+                    if (SelfIdentity.IsSelf(sale.BuyerName)) continue;
 
                     var delta = listedAt - sale.UnixTime;
                     if (delta < 0 || delta > window) continue;
@@ -355,9 +356,12 @@ namespace MarketStats.Data
             if (profile.ChatMentions.Count == 0) return;
 
             var top = profile.ChatMentions
+                .Where(m => !SelfIdentity.IsSelf(m.SpeakerName))   // 自分の発言は手がかりにしない
                 .GroupBy(m => m.SpeakerName, StringComparer.OrdinalIgnoreCase)
                 .OrderByDescending(g => g.Count())
-                .First();
+                .FirstOrDefault();
+
+            if (top == null) return;
 
             evidence.Add(new OwnerEvidence
             {

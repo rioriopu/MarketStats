@@ -393,6 +393,17 @@ namespace MarketStats.UI
                     "実在しなければ推定が誤っていると分かります。外部サイトへの通信が発生し、" +
                     "リテイナータブのボタンを押したときだけ照会します。");
 
+                var showInferred = config.ShowInferredOwners;
+                if (ImGui.Checkbox("確定していない持ち主も名前で表示する", ref showInferred))
+                {
+                    config.ShowInferredOwners = showInferred;
+                    config.Save();
+                }
+                AttachTooltip(
+                    "既定では、確定した持ち主だけを名前で表示し、推定は「不明（候補あり）」と出します。\n" +
+                    "状況証拠だけで名前を出すと、当たっているように見えて外れることがあるためです。\n" +
+                    "有効にすると、候補も確度付きで表示します（「リテイナー」タブでは常に根拠を確認できます）。");
+
                 var inference = config.EnableOwnerInference;
                 if (ImGui.Checkbox("購入履歴からリテイナーの持ち主を推定する", ref inference))
                 {

@@ -79,12 +79,29 @@ namespace MarketStats.Data
         [JsonIgnore]
         public DateTime LastSeenLocal => DateTimeOffset.FromUnixTimeSeconds(LastSeenUnix).LocalDateTime;
 
-        /// <summary>表示用のオーナー表記。</summary>
+        /// <summary>
+        /// 表示用のオーナー表記。
+        ///
+        /// 確定していないものを断定的に見せると誤解を招くため、
+        /// 推定は既定では隠し、設定で明示的に有効にしたときだけ候補として見せる。
+        /// </summary>
         [JsonIgnore]
-        public string DisplayOwner =>
-            !string.IsNullOrEmpty(OwnerName) ? OwnerName
-            : !string.IsNullOrEmpty(GuessedOwnerName) ? $"{GuessedOwnerName}（推定）"
-            : "不明";
+        public string DisplayOwner
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(OwnerName)) return OwnerName;
+                if (string.IsNullOrEmpty(GuessedOwnerName)) return "不明";
+
+                return Plugin.Config.ShowInferredOwners
+                    ? $"{GuessedOwnerName}（候補 {Confidence}）"
+                    : "不明（候補あり）";
+            }
+        }
+
+        /// <summary>持ち主が確定しているか（推定ではないか）。</summary>
+        [JsonIgnore]
+        public bool IsOwnerCertain => !string.IsNullOrEmpty(OwnerName);
     }
 
     /// <summary>チャットでリテイナー名に言及した発言。</summary>

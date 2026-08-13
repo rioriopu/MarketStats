@@ -202,9 +202,23 @@ namespace MarketStats.UI
 
                 if (profile != null && !string.IsNullOrEmpty(profile.GuessedOwnerName))
                 {
-                    ImGui.TextColored(ColorAccent, $"{profile.GuessedOwnerName}（推定）");
-                    AttachTooltip(
-                        $"確度 {profile.Confidence}。\n" + string.Join("\n", profile.GuessReasons.Take(4)));
+                    // 確定していないものは、設定で明示的に有効にしたときだけ名前を見せる。
+                    if (Plugin.Config.ShowInferredOwners)
+                    {
+                        ImGui.TextColored(ColorAccent, $"{profile.GuessedOwnerName}（候補）");
+                        AttachTooltip(
+                            $"確度 {profile.Confidence}。確定ではありません。\n" +
+                            string.Join("\n", profile.GuessReasons.Take(4)));
+                    }
+                    else
+                    {
+                        ImGui.TextColored(ColorMuted, "不明（候補あり）");
+                        AttachTooltip(
+                            "状況証拠から候補は挙がっていますが、確定はしていません。\n" +
+                            "設定で「確定していない持ち主も表示する」を有効にすると候補名を表示します。\n" +
+                            "「リテイナー」タブでは根拠を確認できます。");
+                    }
+
                     return;
                 }
 

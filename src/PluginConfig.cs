@@ -86,6 +86,14 @@ namespace MarketStats
         /// <summary>購入履歴と出品タイミングから、リテイナーの持ち主を推定する。</summary>
         public bool EnableOwnerInference { get; set; } = true;
 
+        /// <summary>
+        /// 確定していない持ち主（推定）も名前で表示する。
+        ///
+        /// 既定では隠す。状況証拠だけで名前を出すと、当たっているように見えて外れることがあり、
+        /// 誤った名前が独り歩きする方が困るため。
+        /// </summary>
+        public bool ShowInferredOwners { get; set; } = false;
+
         /// <summary>チャットでリテイナー名に言及した発言を手がかりに使う。</summary>
         public bool EnableChatRetainerWatch { get; set; } = false;
 

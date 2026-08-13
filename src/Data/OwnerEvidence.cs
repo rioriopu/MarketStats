@@ -103,11 +103,19 @@ namespace MarketStats.Data
     /// </summary>
     public static class OwnerEvidenceEvaluator
     {
-        /// <summary>結論として採用する最低確度。</summary>
-        public const int MinimumConfidence = 55;
+        /// <summary>
+        /// 結論として採用する最低確度。
+        ///
+        /// 誤った名前を出すのが一番困るので、確信が持てないうちは「不明」のままにする。
+        /// 状況証拠だけで名前を断定しない、という考え方。
+        /// </summary>
+        public const int MinimumConfidence = 70;
 
-        /// <summary>この重みを超える手がかりは、それ 1 つだけでも結論を出してよい。</summary>
-        public const int StandaloneWeight = 140;
+        /// <summary>
+        /// これ 1 つで結論を出してよい重み。
+        /// 実質的に「確定できる手がかり」だけが該当する高さに設定している。
+        /// </summary>
+        public const int StandaloneWeight = 900;
 
         public static OwnerConclusion Evaluate(IReadOnlyList<OwnerEvidence> evidence)
         {
@@ -137,7 +145,8 @@ namespace MarketStats.Data
                 return conclusion;
             }
 
-            // 名前ごとに重みを合計する。
+            // 確定できる手がかりが無い以上、ここから先はすべて状況証拠でしかない。
+            // 断定はせず、確度を添えた「候補」として扱う。
             var byName = evidence
                 .Where(e => !string.IsNullOrWhiteSpace(e.OwnerName))
                 .GroupBy(e => e.OwnerName, StringComparer.OrdinalIgnoreCase)
