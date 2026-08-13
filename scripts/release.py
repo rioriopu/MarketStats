@@ -25,18 +25,11 @@ REPO_DIR = r"C:\Users\Administrator\TempRepos\PremiumDevReleaseRepo"
 PLUGIN_NAME = "MarketStats"
 FILES = [f"{PLUGIN_NAME}.dll", f"{PLUGIN_NAME}.json", f"{PLUGIN_NAME}.deps.json"]
 
-# 依存ライブラリ（あれば同梱する）。無くても配布は成立する。
-OPTIONAL_FILES = [
-    "Microsoft.Data.Sqlite.dll",
-    "SQLitePCLRaw.batteries_v2.dll",
-    "SQLitePCLRaw.core.dll",
-    "SQLitePCLRaw.provider.e_sqlite3.dll",
-]
-
-# ネイティブライブラリは runtimes 配下にあるので、プラグイン直下へ移して入れる。
-NATIVE_FILES = [
-    (r"runtimes\win-x64\native\e_sqlite3.dll", "e_sqlite3.dll"),
-]
+# 外部ライブラリは同梱しない。
+# 過去に SQLite ライブラリを同梱したところ、更新に失敗するようになったため
+# （プラグイン本体以外の依存を配ると、読み込みの解決で問題が起きる）。
+OPTIONAL_FILES: list[str] = []
+NATIVE_FILES: list[tuple[str, str]] = []
 
 SSH_KEY = "/c/Users/Administrator/.ssh/estelld_vps"
 VPS = "root@133.167.127.79"

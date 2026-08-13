@@ -82,21 +82,9 @@ namespace MarketStats.UI
                                         : string.Empty);
                 }
 
-                ImGui.SameLine();
-                if (ImGui.SmallButton($"読み取りを検証##cmp_{source.PluginName}"))
-                {
-                    _importStatus = $"{source.PluginName}: " + Data.SqliteLibraryReader.Compare(
-                        source.Path, source.TableName, source.ContentIdColumn, source.NameColumn);
-                }
-                AttachTooltip(
-                    "自前の読み取りと、正規のライブラリでの読み取りを突き合わせて、\n" +
-                    "同じ結果になるかを確かめます。");
             }
 
             ImGui.EndTable();
-
-            ImGui.Spacing();
-            ImGui.TextColored(ColorMuted, $"SQLite ライブラリ: {Data.SqliteLibraryReader.Status}");
         }
 
         /// <summary>
