@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -16,7 +17,14 @@ namespace MarketStats.Game
         /// <summary>見つかったキャラクターのワールド名（1 件だけ見つかった場合）。</summary>
         public string WorldName { get; set; } = string.Empty;
 
+        /// <summary>名前とワールドが一致した 1 人のキャラクターページ ID。特定できなければ 0。</summary>
+        public long LodestoneId { get; set; }
+
         public int HitCount { get; set; }
+
+        /// <summary>名前が完全に一致した件数。1 件なら本人を特定できたことになる。</summary>
+        public int ExactMatches { get; set; }
+
         public DateTime CheckedLocal { get; set; }
         public string? Error { get; set; }
     }
@@ -70,16 +78,51 @@ namespace MarketStats.Game
                     await Task.Delay(MinimumInterval - since).ConfigureAwait(false);
                 _lastRequestUtc = DateTime.UtcNow;
 
-                var url = LodestoneLink.BuildSearchUrl(name);
+                // ワールドが分かっていれば、それで絞って検索する（別人が大量に出るのを防ぐ）。
+                var world = LodestoneLink.ResolveKnownWorld(name);
+                var url = LodestoneLink.BuildSearchUrl(name, world);
                 var html = await _http.GetStringAsync(url).ConfigureAwait(false);
 
-                // 検索結果の件数表示から実在を判断する。
-                var hits = Regex.Matches(html, "entry__link--character|entry__chara__name");
-                result.HitCount = hits.Count;
-                result.Exists = hits.Count > 0;
+                // 検索結果の各項目から「ページ ID・名前・ワールド」を取り出す。
+                var entries = Regex.Matches(
+                    html,
+                    @"/lodestone/character/(?<id>\d+)/""[^>]*>\s*(?<name>[^<]+)</a>.*?entry__world[^>]*>\s*(?<world>[^<（(]+)",
+                    RegexOptions.Singleline);
 
-                var world = Regex.Match(html, @"entry__world""[^>]*>\s*([^<（(]+)");
-                if (world.Success) result.WorldName = world.Groups[1].Value.Trim();
+                result.HitCount = entries.Count;
+                result.Exists = entries.Count > 0;
+
+                // 名前が完全に一致するものだけを本人候補とする。
+                var exact = entries
+                    .Select(m => new
+                    {
+                        Id = long.TryParse(m.Groups["id"].Value, out var v) ? v : 0,
+                        Name = m.Groups["name"].Value.Trim(),
+                        World = m.Groups["world"].Value.Trim(),
+                    })
+                    .Where(e => e.Id != 0 &&
+                                string.Equals(e.Name, name.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                // ワールドまで分かっていれば、そこで 1 人に絞り込む。
+                if (!string.IsNullOrEmpty(world))
+                    exact = exact
+                        .Where(e => e.World.StartsWith(world, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                result.ExactMatches = exact.Count;
+
+                if (exact.Count >= 1)
+                {
+                    result.WorldName = exact[0].World;
+
+                    // 候補が 1 人に絞れたときだけ、本人のページとして扱う。
+                    if (exact.Count == 1) result.LodestoneId = exact[0].Id;
+                }
+                else if (entries.Count > 0)
+                {
+                    result.WorldName = entries[0].Groups["world"].Value.Trim();
+                }
             }
             catch (Exception e)
             {

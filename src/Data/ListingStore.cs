@@ -116,6 +116,37 @@ namespace MarketStats.Data
             return fresh;
         }
 
+        /// <summary>
+        /// あるアイテムの出品一覧を「今の状態」で置き換える。
+        ///
+        /// 出品は売れたり取り下げられたりして消える。追加するだけだと古い出品が残り続け、
+        /// 同じリテイナーの同じ品が何件も並んでしまう。
+        /// 一覧を丸ごと観測できたときは、そこに無かったものを取り除く。
+        /// </summary>
+        /// <returns>消えていた（＝売れたか取り下げられた）出品。</returns>
+        public List<ListingRecord> ReplaceForItem(uint itemId, IReadOnlyList<ListingRecord> observed)
+        {
+            var vanished = new List<ListingRecord>();
+            var seen = observed.Select(l => l.ListingId).ToHashSet();
+
+            lock (_lock)
+            {
+                var stale = _byListingId.Values
+                    .Where(l => l.ItemId == itemId && !seen.Contains(l.ListingId))
+                    .ToList();
+
+                foreach (var listing in stale)
+                {
+                    _byListingId.Remove(listing.ListingId);
+                    vanished.Add(listing);
+                }
+
+                if (stale.Count > 0) _dirty = true;
+            }
+
+            return vanished;
+        }
+
         public List<ListingRecord> ForItem(uint itemId)
         {
             lock (_lock)

@@ -61,12 +61,57 @@ namespace MarketStats.Data
                 CollectChatEvidence(profile, evidence);
                 CollectSiblingEvidence(profile, registry, evidence);
 
+                RejectImpossible(profile, evidence);
+
                 var conclusion = OwnerEvidenceEvaluator.Evaluate(evidence);
                 if (registry.ApplyConclusion(profile.RetainerId, conclusion, evidence) && pass == 0)
                     updated++;
             }
 
             return updated;
+        }
+
+        /// <summary>
+        /// 明らかにあり得ない候補を取り除く。
+        ///
+        /// 推定が外れる原因の多くは「同じ時期にたまたま同じ物を買っていた別人」なので、
+        /// 成立しない候補を先に落とすだけで精度が上がる。
+        /// </summary>
+        private static void RejectImpossible(RetainerProfile profile, List<OwnerEvidence> evidence)
+        {
+            if (evidence.Count == 0) return;
+
+            // 確定情報があるなら、それ以外の候補は不要。
+            var decisive = evidence.FirstOrDefault(e => e.IsDecisive);
+            if (decisive != null)
+            {
+                evidence.RemoveAll(e => !e.IsDecisive &&
+                    !string.Equals(e.OwnerName, decisive.OwnerName, StringComparison.OrdinalIgnoreCase));
+                return;
+            }
+
+            evidence.RemoveAll(e =>
+            {
+                if (string.IsNullOrWhiteSpace(e.OwnerName)) return true;
+
+                // 自分のリテイナーでないのに、自分が候補に挙がるのはおかしい。
+                if (!profile.IsMine && Plugin.PlayerState.IsLoaded &&
+                    string.Equals(e.OwnerName, Plugin.PlayerState.CharacterName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                // すでに別のリテイナーの持ち主として確定している人物は、
+                // そのリテイナーが自作品を主力にしているなら、こちらの持ち主ではない可能性が高い。
+                // ただし複数リテイナーを持つのは普通なので、弱い手がかりのときだけ落とす。
+                if (e.Weight >= 70) return false;
+
+                var elsewhere = Plugin.Retainers.Snapshot().FirstOrDefault(p =>
+                    p.RetainerId != profile.RetainerId &&
+                    p.IsMine &&
+                    string.Equals(p.OwnerName, e.OwnerName, StringComparison.OrdinalIgnoreCase));
+
+                // 自分のキャラクターが候補になっている弱い手がかりは落とす。
+                return elsewhere != null;
+            });
         }
 
         /// <summary>確定できる手がかり（自分のリテイナー、手動設定、識別子、名刺）。</summary>

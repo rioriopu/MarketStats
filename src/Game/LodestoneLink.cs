@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace MarketStats.Game
 {
     /// <summary>
@@ -40,13 +42,22 @@ namespace MarketStats.Game
             }
         }
 
-        public static string BuildSearchUrl(string characterName)
+        /// <summary>
+        /// 検索 URL を作る。
+        ///
+        /// ワールドが分かっていればそれで絞る。分からなければデータセンターで絞る。
+        /// 名前は完全一致で指定しても部分一致で拾われるため、ワールドまで指定できるかが精度を分ける。
+        /// </summary>
+        public static string BuildSearchUrl(string characterName, string? worldName = null)
         {
             var region = Plugin.Config.LodestoneRegion;
             if (Array.IndexOf(Regions, region) < 0) region = "jp";
 
             var url = $"https://{region}.finalfantasyxiv.com/lodestone/character/?q=" +
                       Uri.EscapeDataString(characterName.Trim());
+
+            if (!string.IsNullOrEmpty(worldName))
+                return url + "&worldname=" + Uri.EscapeDataString(worldName);
 
             if (Plugin.Config.LodestoneFilterByDataCenter)
             {
@@ -58,10 +69,60 @@ namespace MarketStats.Game
             return url;
         }
 
-        public static void OpenSearch(string characterName)
+        /// <summary>キャラクターページを直接開く URL。</summary>
+        public static string BuildCharacterUrl(long lodestoneId)
+        {
+            var region = Plugin.Config.LodestoneRegion;
+            if (Array.IndexOf(Regions, region) < 0) region = "jp";
+            return $"https://{region}.finalfantasyxiv.com/lodestone/character/{lodestoneId}/";
+        }
+
+        /// <summary>
+        /// 分かっている情報からできるだけ絞って Lodestone を開く。
+        ///
+        /// キャラクターページが特定できていればそこへ直行し、
+        /// できていなければワールドで絞った検索を開く。
+        /// </summary>
+        public static void OpenSearch(string characterName, string? worldName = null)
         {
             if (string.IsNullOrWhiteSpace(characterName)) return;
-            OpenUrl(BuildSearchUrl(characterName));
+
+            // すでにページを特定していれば直接開く。
+            var known = Plugin.NameVerifier.GetCached(characterName);
+            if (known is { LodestoneId: > 0 })
+            {
+                OpenUrl(BuildCharacterUrl(known.LodestoneId));
+                return;
+            }
+
+            OpenUrl(BuildSearchUrl(characterName, worldName ?? ResolveKnownWorld(characterName)));
+        }
+
+        /// <summary>その名前のキャラクターのワールドが分かっていれば返す。</summary>
+        public static string? ResolveKnownWorld(string characterName)
+        {
+            try
+            {
+                // 対応表に登録があればワールドが分かる。
+                var identity = Plugin.Identities.ResolveByName(characterName);
+                if (identity is { WorldId: not 0 })
+                {
+                    var world = Plugin.DataManager
+                        .GetExcelSheet<Lumina.Excel.Sheets.World>()?.GetRowOrDefault(identity.WorldId);
+                    var name = world?.Name.ExtractText();
+                    if (!string.IsNullOrEmpty(name)) return name;
+                }
+
+                // 購入履歴にはワールド名がそのまま入っていることがある。
+                var purchase = Plugin.Purchases.ByBuyer(characterName).FirstOrDefault();
+                if (purchase != null && !string.IsNullOrEmpty(purchase.WorldName)) return purchase.WorldName;
+            }
+            catch
+            {
+                // 分からなければ絞り込まない。
+            }
+
+            return null;
         }
 
         public static void OpenUrl(string url)

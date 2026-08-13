@@ -374,6 +374,7 @@ namespace MarketStats
                 if (records.Count > 0)
                 {
                     Listings.Observe(records);
+                    Listings.ReplaceForItem(itemId, records);
                     foreach (var record in records) Retainers.Observe(record);
                     Listings.Save();
                 }

@@ -192,6 +192,12 @@ namespace MarketStats.Game
             if (records.Count == 0) return;
 
             Plugin.Listings.Observe(records);
+
+            // このアイテムの一覧を丸ごと見たので、もう無い出品は取り除く。
+            // そうしないと売れた・取り下げられた出品が残り、同じ品が重複して見えてしまう。
+            foreach (var itemGroup in records.GroupBy(r => r.ItemId))
+                Plugin.Listings.ReplaceForItem(itemGroup.Key, itemGroup.ToList());
+
             foreach (var record in records) Plugin.Retainers.Observe(record);
 
             // 出品を読むついでに、読み方が合っているかを確かめて覚える。

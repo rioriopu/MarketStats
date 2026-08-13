@@ -493,6 +493,29 @@ namespace MarketStats.UI
                 ImGui.EndTable();
             }
 
+            if (report.SameAccount.Count > 0)
+            {
+                ImGui.Spacing();
+                ImGui.TextColored(ColorFavorite,
+                    $"同じアカウントの別キャラクター（{report.SameAccount.Count} 人）");
+                ImGui.TextWrapped(
+                    "アカウントの識別子が一致しているため、同じ人が使っているキャラクターです。" +
+                    "買い物用のサブキャラで動いている相手でも、ここから本体が分かります。");
+
+                foreach (var alt in report.SameAccount.Take(10))
+                {
+                    ImGui.Bullet();
+                    ImGui.SameLine();
+                    ImGui.TextColored(ColorLink, alt.Name);
+                    if (ImGui.IsItemClicked()) LodestoneOpen(alt.Name);
+                    ImGui.SameLine();
+                    ImGui.TextColored(ColorMuted, $"（0x{alt.ContentId:X}）");
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"調べる##alt_{alt.ContentId}"))
+                        OpenProbeForContentId(alt.ContentId);
+                }
+            }
+
             if (report.AsArtisan.Count > 0)
             {
                 ImGui.Spacing();

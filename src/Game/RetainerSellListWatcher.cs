@@ -127,10 +127,16 @@ namespace MarketStats.Game
                 ObservedUnix = now,
             }).ToList();
 
-            Plugin.OwnListings.UpdateListings(retainerId, own);
-            Plugin.OwnListings.Save();
+            // 出品が 0 件になった場合も反映する（売り切ると明細が空になるため）。
+            // ただし「まだ読み込めていない」状態と区別するため、
+            // ゲーム側も 0 件だと言っているときに限る。
+            if (listings.Count > 0 || proxy->RetainerListingCount == 0)
+            {
+                Plugin.OwnListings.UpdateListings(retainerId, own);
+                Plugin.OwnListings.Save();
+            }
 
-            // 0 件のときは「まだ読み込めていない」場合と区別できないため、誤検出を避けて何もしない。
+            // 0 件のときは差分を取れないので、売却の検出はここで終わりにする。
             if (listings.Count == 0) return;
 
             var detected = Plugin.Pending.UpdateRetainerSnapshot(retainerName, listings);

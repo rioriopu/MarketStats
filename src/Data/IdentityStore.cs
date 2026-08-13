@@ -36,6 +36,12 @@ namespace MarketStats.Data
         public ulong ContentId { get; set; }
         public string Name { get; set; } = string.Empty;
         public ushort WorldId { get; set; }
+
+        /// <summary>
+        /// アカウントの識別子。同じ値を持つキャラクターは同一アカウント＝同じ人の別キャラ。
+        /// 取得できた場合のみ入る。
+        /// </summary>
+        public ulong AccountId { get; set; }
         public IdentitySource Source { get; set; }
         public long LastSeenUnix { get; set; }
 
@@ -78,7 +84,8 @@ namespace MarketStats.Data
         }
 
         /// <summary>ゲームから直接得られた身元情報を記録する。</summary>
-        public void Record(ulong contentId, string name, ushort worldId, IdentitySource source)
+        public void Record(
+            ulong contentId, string name, ushort worldId, IdentitySource source, ulong accountId = 0)
         {
             if (contentId == 0 || string.IsNullOrWhiteSpace(name)) return;
 
@@ -86,12 +93,18 @@ namespace MarketStats.Data
             {
                 if (_map.TryGetValue(contentId, out var existing))
                 {
+                    // アカウント識別子は後から分かることがあるので、取れたら足す。
+                    if (accountId != 0) existing.AccountId = accountId;
+
                     // より弱い出所で確定情報を塗り潰さない。
                     if (existing.Source > source)
                     {
                         existing.LastSeenUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        _dirty = true;
                         return;
                     }
+
+                    accountId = accountId != 0 ? accountId : existing.AccountId;
                 }
 
                 _map[contentId] = new OwnerIdentity
@@ -99,11 +112,33 @@ namespace MarketStats.Data
                     ContentId = contentId,
                     Name = name,
                     WorldId = worldId,
+                    AccountId = accountId,
                     Source = source,
                     LastSeenUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 };
                 _dirty = true;
             }
+        }
+
+        /// <summary>
+        /// 同じアカウントの別キャラクターを返す。
+        /// 買い物用のサブキャラから本体へ辿るために使う。
+        /// </summary>
+        public List<OwnerIdentity> SameAccount(ulong accountId, ulong excludeContentId = 0)
+        {
+            if (accountId == 0) return new List<OwnerIdentity>();
+
+            lock (_lock)
+                return _map.Values
+                    .Where(v => v.AccountId == accountId && v.ContentId != excludeContentId)
+                    .OrderBy(v => v.Name)
+                    .ToList();
+        }
+
+        /// <summary>アカウント識別子が判明している人数。</summary>
+        public int AccountKnownCount
+        {
+            get { lock (_lock) return _map.Values.Count(v => v.AccountId != 0); }
         }
 
         /// <summary>

@@ -289,6 +289,12 @@ namespace MarketStats.UI
                 ImGui.Spacing();
                 ImGui.TextColored(ColorMuted,
                     $"出品記録: {Plugin.Listings.Count:N0} 件 / 対応表: {Plugin.Identities.ConfirmedCount:N0} 人（推定含め {Plugin.Identities.Count:N0} 件）");
+                ImGui.TextColored(ColorMuted,
+                    $"アカウントの識別子が分かっている人: {Plugin.Identities.AccountKnownCount:N0} 人");
+                AttachTooltip(
+                    "同じアカウントのキャラクターを結び付けるための情報です。\n" +
+                    "その人物を実際に見かけたときに記録されます。\n" +
+                    "買い物用のサブキャラで動いている相手でも、本体のキャラクターが分かることがあります。");
 
                 ImGui.Unindent(10);
                 ImGui.Spacing();

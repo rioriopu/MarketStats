@@ -111,7 +111,9 @@ namespace MarketStats.Game
                         ? IdentitySource.Self
                         : IdentitySource.ObjectTable;
 
-                    Plugin.Identities.Record(contentId, name, worldId, source);
+                    // アカウントの識別子も一緒に控えておく。
+                    // 同じ値を持つキャラクターは同一アカウント＝同じ人の別キャラと分かる。
+                    Plugin.Identities.Record(contentId, name, worldId, source, chara->AccountId);
                     found++;
                 }
 

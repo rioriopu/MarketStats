@@ -65,6 +65,7 @@ namespace MarketStats.UI
                     if (records.Count > 0)
                     {
                         Plugin.Listings.Observe(records);
+                        Plugin.Listings.ReplaceForItem(_marketSnapshot.ItemId, records);
                         foreach (var record in records) Plugin.Retainers.Observe(record);
                     }
                 }

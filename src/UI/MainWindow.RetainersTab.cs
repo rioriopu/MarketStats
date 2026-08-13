@@ -551,9 +551,17 @@ namespace MarketStats.UI
                 }
                 else if (verification.Error != null)
                     ImGui.TextColored(ColorMuted, $"Lodestone 照合: 失敗（{verification.Error}）");
+                else if (verification.LodestoneId > 0)
+                {
+                    ImGui.TextColored(ColorFavorite,
+                        $"Lodestone 照合: 本人を特定（{verification.WorldName}）");
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"ページを開く##lode_{profile.RetainerId}"))
+                        Game.LodestoneLink.OpenUrl(Game.LodestoneLink.BuildCharacterUrl(verification.LodestoneId));
+                }
                 else if (verification.Exists)
                     ImGui.TextColored(ColorFavorite,
-                        $"Lodestone 照合: 実在を確認（{verification.HitCount} 件" +
+                        $"Lodestone 照合: 実在を確認（完全一致 {verification.ExactMatches} 件 / 全 {verification.HitCount} 件" +
                         (string.IsNullOrEmpty(verification.WorldName) ? "" : $" / {verification.WorldName}") + "）");
                 else
                     ImGui.TextColored(ColorAccent,

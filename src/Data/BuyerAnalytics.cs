@@ -104,10 +104,13 @@ namespace MarketStats.Data
             if (entries.Count == 0) return new List<MarketBuyerStat>();
 
             // 同じ取引が両方に入っている場合があるので取り除く
-            // （自分の販売履歴の分は購入履歴側にも載ることがある）。
+            // （自分の販売履歴の分は購入履歴側にも載る）。
+            //
+            // 単価は税の扱いで食い違うことがあるため、突き合わせには使わない。
+            // 同じ人が同じ秒に同じ物を同じ数だけ買っていれば、同一の取引とみなす。
             var deduped = entries
-                .GroupBy(e => (e.Purchase.ItemId, e.Purchase.UnixTime, e.Purchase.BuyerName,
-                               e.Purchase.Quantity, e.Purchase.UnitPrice))
+                .GroupBy(e => (e.Purchase.ItemId, e.Purchase.UnixTime,
+                               e.Purchase.BuyerName.ToLowerInvariant(), e.Purchase.Quantity))
                 .Select(g => g.OrderByDescending(e => e.FromMe).First())
                 .ToList();
 

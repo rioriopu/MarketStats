@@ -43,6 +43,12 @@ namespace MarketStats.Game
 
             /// <summary>メモリ上でこの識別子の近くにあった名前。</summary>
             public List<string> NearbyNames { get; } = new();
+
+            /// <summary>アカウントの識別子（分かった場合）。</summary>
+            public ulong AccountId { get; set; }
+
+            /// <summary>同じアカウントの別キャラクター。</summary>
+            public List<OwnerIdentity> SameAccount { get; } = new();
         }
 
         /// <summary>
@@ -191,6 +197,34 @@ namespace MarketStats.Game
 
             if (report.WorldId != 0)
                 report.WorldName = ResolveWorldName(report.WorldId);
+
+            SearchSameAccount(report, identity);
+        }
+
+        /// <summary>
+        /// 同じアカウントの別キャラクターを探す。
+        /// 買い物用のサブキャラで動いている相手でも、本体に辿り着けることがある。
+        /// </summary>
+        private static void SearchSameAccount(Report report, OwnerIdentity? _)
+        {
+            var identity = Plugin.Identities.Resolve(report.ContentId);
+            if (identity == null || identity.AccountId == 0)
+            {
+                Add(report, "同じアカウント",
+                    "アカウントの識別子が分かっていません（その人物を直接見かけると分かります）。", false);
+                return;
+            }
+
+            report.AccountId = identity.AccountId;
+            var others = Plugin.Identities.SameAccount(identity.AccountId, report.ContentId);
+            report.SameAccount.AddRange(others);
+
+            Add(report, "同じアカウント",
+                others.Count == 0
+                    ? $"アカウント 0x{identity.AccountId:X} の他のキャラクターは見つかっていません。"
+                    : $"同じアカウントの別キャラクターが {others.Count} 人います: " +
+                      string.Join(", ", others.Take(5).Select(o => o.Name)),
+                others.Count > 0);
         }
 
         /// <summary>この識別子と関係のあるリテイナーを探す。</summary>
