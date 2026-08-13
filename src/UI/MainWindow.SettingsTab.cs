@@ -18,6 +18,74 @@ namespace MarketStats.UI
         private string _importStatus = string.Empty;
         private bool _showImport;
 
+        private List<Data.ExternalSource>? _externalSources;
+
+        /// <summary>
+        /// 同じような記録を持っている他のプラグインを探して、そこから直接取り込む。
+        /// 手作業での変換や貼り付けをせずに済む。
+        /// </summary>
+        private void DrawExternalPluginImport()
+        {
+            ImGui.TextColored(ColorMuted, "他のプラグインの記録から取り込む");
+            ImGui.TextWrapped(
+                "同じように「誰がどのキャラクターか」を集めているプラグインが手元にあれば、" +
+                "その記録をそのまま取り込めます。読み取り専用で開くため、相手のデータは変更しません。");
+
+            ImGui.Spacing();
+
+            if (ImGui.Button("手元のプラグインを探す"))
+                _externalSources = Data.PluginDataImporter.Detect();
+
+            if (_externalSources == null) return;
+
+            if (_externalSources.Count == 0)
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(ColorMuted, "対応するプラグインの記録は見つかりませんでした。");
+                return;
+            }
+
+            ImGui.Spacing();
+
+            const ImGuiTableFlags flags =
+                ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp;
+
+            if (!ImGui.BeginTable("##external_sources", 4, flags)) return;
+
+            ImGui.TableSetupColumn("プラグイン", ImGuiTableColumnFlags.WidthFixed, 130);
+            ImGui.TableSetupColumn("大きさ", ImGuiTableColumnFlags.WidthFixed, 90);
+            ImGui.TableSetupColumn("最終更新", ImGuiTableColumnFlags.WidthFixed, 130);
+            ImGui.TableSetupColumn("取り込み", ImGuiTableColumnFlags.WidthStretch, 1f);
+            ImGui.TableHeadersRow();
+
+            foreach (var source in _externalSources)
+            {
+                ImGui.TableNextRow();
+
+                ImGui.TableNextColumn();
+                ImGui.Text(source.PluginName);
+                AttachTooltip(source.Path);
+
+                ImGui.TableNextColumn();
+                ImGui.TextColored(ColorMuted, $"{source.FileSize / 1024:N0} KB");
+
+                ImGui.TableNextColumn();
+                ImGui.TextColored(ColorMuted, source.UpdatedLocal.ToString("M/d HH:mm"));
+
+                ImGui.TableNextColumn();
+                if (ImGui.SmallButton($"取り込む##ext_{source.PluginName}"))
+                {
+                    var result = Data.PluginDataImporter.Import(source);
+                    _importStatus = $"{source.PluginName}: {result.Summary}" +
+                                    (result.Problems.Count > 0
+                                        ? "\n" + string.Join("\n", result.Problems)
+                                        : string.Empty);
+                }
+            }
+
+            ImGui.EndTable();
+        }
+
         /// <summary>
         /// 識別子と名前の対応を、外から取り込む／外へ書き出す。
         ///
@@ -36,6 +104,12 @@ namespace MarketStats.UI
             if (!_showImport) return;
 
             ImGui.Indent(10);
+
+            DrawExternalPluginImport();
+
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.TextColored(ColorMuted, "ファイルや貼り付けから取り込む");
             ImGui.TextWrapped(
                 "1 行に 1 人ずつ、次の並びで貼り付けてください（カンマ区切り / タブ区切りのどちらでも可）。\n" +
                 "　識別子, 名前, ワールドID（省略可）, LodestoneID（省略可）\n" +
