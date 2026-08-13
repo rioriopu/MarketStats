@@ -25,6 +25,19 @@ REPO_DIR = r"C:\Users\Administrator\TempRepos\PremiumDevReleaseRepo"
 PLUGIN_NAME = "MarketStats"
 FILES = [f"{PLUGIN_NAME}.dll", f"{PLUGIN_NAME}.json", f"{PLUGIN_NAME}.deps.json"]
 
+# 依存ライブラリ（あれば同梱する）。無くても配布は成立する。
+OPTIONAL_FILES = [
+    "Microsoft.Data.Sqlite.dll",
+    "SQLitePCLRaw.batteries_v2.dll",
+    "SQLitePCLRaw.core.dll",
+    "SQLitePCLRaw.provider.e_sqlite3.dll",
+]
+
+# ネイティブライブラリは runtimes 配下にあるので、プラグイン直下へ移して入れる。
+NATIVE_FILES = [
+    (r"runtimes\win-x64\native\e_sqlite3.dll", "e_sqlite3.dll"),
+]
+
 SSH_KEY = "/c/Users/Administrator/.ssh/estelld_vps"
 VPS = "root@133.167.127.79"
 VPS_PROJECT = "/home/ubuntu/estelld-repo"
@@ -52,14 +65,30 @@ def pack():
     os.makedirs(out_dir, exist_ok=True)
     zip_path = os.path.join(out_dir, "latest.zip")
 
+    included = []
+
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for name in FILES:
             path = os.path.join(BIN_DIR, name)
             if not os.path.exists(path):
                 sys.exit(f"成果物が見つかりません: {path}")
             z.write(path, name)
+            included.append(name)
+
+        for name in OPTIONAL_FILES:
+            path = os.path.join(BIN_DIR, name)
+            if os.path.exists(path):
+                z.write(path, name)
+                included.append(name)
+
+        for source, target in NATIVE_FILES:
+            path = os.path.join(BIN_DIR, source)
+            if os.path.exists(path):
+                z.write(path, target)
+                included.append(target)
 
     print(f"== zip 作成 == {zip_path} ({os.path.getsize(zip_path)} バイト / {version})")
+    print(f"　収録: {len(included)} ファイル")
     return version, manifest, zip_path
 
 

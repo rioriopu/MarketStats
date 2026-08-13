@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <Authors>estell</Authors>
-    <Version>0.18.0.0</Version>
+    <Version>0.18.1.0</Version>
     <Description>Aggregate your retainer sale history by buyer, with resale tracking and seller identification.</Description>
     <RepositoryUrl>https://github.com/rioriopu/MarketStats</RepositoryUrl>
     <Configurations>Debug;Release</Configurations>
@@ -71,6 +71,20 @@
       <HintPath>$(DalamudLibPath)\Serilog.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <!--
+    SQLite ライブラリを使った読み取り（自前パーサとの比較検証用）。
+    不要になったら、この ItemGroup と src/Data/SqliteLibraryReader.cs を消せば元に戻る。
+    2.1.11 以下には既知の脆弱性があるため、3.x 系列を使う。
+  -->
+  <PropertyGroup>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   </ItemGroup>
 
   <ItemGroup>
