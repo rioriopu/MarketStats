@@ -7,3 +7,4 @@ dist/out/
 .idea/
 *.zip
 *.dmp
+playertrack_identities.csv

@@ -42,6 +42,12 @@ namespace MarketStats.Data
         /// 取得できた場合のみ入る。
         /// </summary>
         public ulong AccountId { get; set; }
+
+        /// <summary>
+        /// Lodestone のキャラクターページ ID。
+        /// 分かっていれば、検索を挟まずに本人のページを直接開ける。
+        /// </summary>
+        public long LodestoneId { get; set; }
         public IdentitySource Source { get; set; }
         public long LastSeenUnix { get; set; }
 
@@ -133,6 +139,12 @@ namespace MarketStats.Data
                     .Where(v => v.AccountId == accountId && v.ContentId != excludeContentId)
                     .OrderBy(v => v.Name)
                     .ToList();
+        }
+
+        /// <summary>登録されているすべての対応（書き出し用）。</summary>
+        public List<OwnerIdentity> All
+        {
+            get { lock (_lock) return _map.Values.ToList(); }
         }
 
         /// <summary>アカウント識別子が判明している人数。</summary>

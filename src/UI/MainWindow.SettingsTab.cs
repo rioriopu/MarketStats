@@ -13,6 +13,70 @@ namespace MarketStats.UI
         private static readonly int[] FavoriteRetentionValues = { 14, 30, 90, 0 };
 
         private bool _confirmClear;
+        private string _importText = string.Empty;
+        private string _importStatus = string.Empty;
+        private bool _showImport;
+
+        /// <summary>
+        /// 識別子と名前の対応を、外から取り込む／外へ書き出す。
+        ///
+        /// 他のプラグインが貯めた記録を活かしたり、別のキャラクターへ移したりできる。
+        /// </summary>
+        private void DrawIdentityImportExport()
+        {
+            ImGui.Spacing();
+
+            if (ImGui.Button(_showImport ? "対応表の取り込みを閉じる" : "対応表を取り込む / 書き出す"))
+                _showImport = !_showImport;
+            AttachTooltip(
+                "識別子と名前の対応を、外部のデータから取り込めます。\n" +
+                "他のプラグインが貯めた記録を活かしたり、別のキャラクターへ移したりできます。");
+
+            if (!_showImport) return;
+
+            ImGui.Indent(10);
+            ImGui.TextWrapped(
+                "1 行に 1 人ずつ、次の並びで貼り付けてください（カンマ区切り / タブ区切りのどちらでも可）。\n" +
+                "　識別子, 名前, ワールドID（省略可）, LodestoneID（省略可）\n" +
+                "見出し行や、識別子が数字でない行は自動的に読み飛ばします。");
+
+            ImGui.Spacing();
+
+            var text = _importText;
+            if (ImGui.InputTextMultiline("##import_text", ref text, 200_000,
+                    new System.Numerics.Vector2(-1, 120)))
+                _importText = text;
+
+            if (ImGui.Button("取り込む"))
+            {
+                var result = Data.IdentityImporter.Import(_importText);
+                _importStatus = result.Summary +
+                                (result.Problems.Count > 0 ? "\n" + string.Join("\n", result.Problems) : string.Empty);
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("いまの対応表を書き出す"))
+            {
+                ImGui.SetClipboardText(Data.IdentityImporter.Export());
+                _importStatus = "確定している対応をクリップボードへ書き出しました。";
+            }
+            AttachTooltip("推定を除いた、確定している対応だけを書き出します。");
+
+            ImGui.SameLine();
+            if (ImGui.Button("貼り付け欄を消去"))
+            {
+                _importText = string.Empty;
+                _importStatus = string.Empty;
+            }
+
+            if (!string.IsNullOrEmpty(_importStatus))
+            {
+                ImGui.Spacing();
+                ImGui.TextWrapped(_importStatus);
+            }
+
+            ImGui.Unindent(10);
+        }
 
         private void DrawSettingsTab()
         {
@@ -447,6 +511,8 @@ namespace MarketStats.UI
                 ImGui.SameLine();
                 if (ImGui.Button("保存フォルダを開く"))
                     LodestoneLink.OpenUrl(Plugin.PluginInterface.GetPluginConfigDirectory());
+
+                DrawIdentityImportExport();
 
                 ImGui.Spacing();
                 if (ImGui.Button("出品記録を消去"))

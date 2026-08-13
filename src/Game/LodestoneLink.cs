@@ -87,10 +87,25 @@ namespace MarketStats.Game
         {
             if (string.IsNullOrWhiteSpace(characterName)) return;
 
-            // すでにページを特定していれば直接開く。
+            // 対応表にページ ID が入っていれば、検索を挟まず直接開く。
+            var identity = Plugin.Identities.ResolveByName(characterName);
+            if (identity is { LodestoneId: > 0 })
+            {
+                OpenUrl(BuildCharacterUrl(identity.LodestoneId));
+                return;
+            }
+
+            // 照合済みで本人を特定できていれば、そのページを開く。
             var known = Plugin.NameVerifier.GetCached(characterName);
             if (known is { LodestoneId: > 0 })
             {
+                // 次回以降は照合なしで開けるよう覚えておく。
+                if (identity != null)
+                {
+                    identity.LodestoneId = known.LodestoneId;
+                    Plugin.Identities.Save();
+                }
+
                 OpenUrl(BuildCharacterUrl(known.LodestoneId));
                 return;
             }
